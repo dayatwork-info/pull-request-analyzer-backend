@@ -1,5 +1,6 @@
 import { Injectable, HttpException, HttpStatus, UnauthorizedException } from '@nestjs/common';
 import axios from 'axios';
+import { RepositoryParamsDto } from './dto/repository-params.dto';
 
 @Injectable()
 export class GitHubService {
@@ -61,6 +62,67 @@ export class GitHubService {
       }
       throw new HttpException(
         'Failed to fetch GitHub repositories',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  async getPullRequests(token: string, params: RepositoryParamsDto) {
+    try {
+      const headers = this.getAuthHeaders(token);
+      const { owner, repo, page = 1, perPage = 30, state = 'all' } = params;
+      
+      const response = await axios.get(
+        `${this.apiUrl}/repos/${owner}/${repo}/pulls`,
+        {
+          headers,
+          params: {
+            page,
+            per_page: perPage,
+            state,
+            sort: 'updated',
+            direction: 'desc',
+          },
+        },
+      );
+      
+      return response.data;
+    } catch (error) {
+      if (error.response) {
+        throw new HttpException(
+          error.response.data.message || 'GitHub API error',
+          error.response.status || HttpStatus.BAD_REQUEST,
+        );
+      }
+      throw new HttpException(
+        'Failed to fetch pull requests',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  async getPullRequestDetails(token: string, params: RepositoryParamsDto, pullNumber: number) {
+    try {
+      const headers = this.getAuthHeaders(token);
+      const { owner, repo } = params;
+      
+      const response = await axios.get(
+        `${this.apiUrl}/repos/${owner}/${repo}/pulls/${pullNumber}`,
+        {
+          headers,
+        },
+      );
+      
+      return response.data;
+    } catch (error) {
+      if (error.response) {
+        throw new HttpException(
+          error.response.data.message || 'GitHub API error',
+          error.response.status || HttpStatus.BAD_REQUEST,
+        );
+      }
+      throw new HttpException(
+        'Failed to fetch pull request details',
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
