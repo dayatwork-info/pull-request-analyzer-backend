@@ -14,4 +14,12 @@ export default registerAs('app', () => ({
     jwtSecret: process.env.JWT_SECRET,
     jwtExpiresIn: process.env.JWT_EXPIRES_IN || '1d',
   },
+  anthropic: {
+    apiKey: process.env.ANTHROPIC_API_KEY,
+    modelName: process.env.ANTHROPIC_MODEL_NAME || 'claude-3-opus-20240229',
+    maxTokens: process.env.ANTHROPIC_MAX_TOKENS ? parseInt(process.env.ANTHROPIC_MAX_TOKENS, 10) : 1000,
+  },
+  github: {
+    apiUrl: process.env.GITHUB_API_URL || 'https://api.github.com',
+  },
 }));
