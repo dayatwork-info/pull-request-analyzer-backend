@@ -17,7 +17,6 @@ export class GitHubController {
     @Headers('X-GitHub-Token') customGithubToken: string,
     @CurrentUser() user: any,
   ) {
-    console.log(`Authenticated user: ${user.email} (ID: ${user.sub})`);
     return this.gitHubService.getUserDetails(customGithubToken);
   }
 
@@ -28,7 +27,6 @@ export class GitHubController {
     @Query('page') page?: number,
     @Query('per_page') perPage?: number,
   ) {
-    console.log(`Authenticated user: ${user.email} (ID: ${user.sub})`);
     return this.gitHubService.getRepositories(customGithubToken, page, perPage);
   }
 
@@ -42,7 +40,6 @@ export class GitHubController {
     @Query('per_page') perPage?: number,
     @Query('state') state?: string,
   ) {
-    console.log(`Authenticated user: ${user.email} (ID: ${user.sub})`);
     const params: RepositoryParamsDto = {
       owner,
       repo,
@@ -60,11 +57,12 @@ export class GitHubController {
     @Param('owner') owner: string,
     @Param('repo') repo: string,
     @Param('pull_number') pullNumber: number,
+    @Query('skip_summary') skipSummary?: boolean,
   ) {
-    console.log(`Authenticated user: ${user.email} (ID: ${user.sub})`);
     const params: RepositoryParamsDto = {
       owner,
       repo,
+      skipSummary,
     };
     return this.gitHubService.getPullRequestDetails(customGithubToken, params, pullNumber);
   }
@@ -79,7 +77,6 @@ export class GitHubController {
     @Query('page') page?: number,
     @Query('per_page') perPage?: number,
   ) {
-    console.log(`Authenticated user: ${user.email} (ID: ${user.sub})`);
     const params: RepositoryParamsDto = {
       owner,
       repo,
@@ -98,7 +95,6 @@ export class GitHubController {
     @Query('page') page?: number,
     @Query('per_page') perPage?: number,
   ) {
-    console.log(`Authenticated user: ${user.email} (ID: ${user.sub})`);
     const params: RepositoryParamsDto = {
       owner,
       repo,
