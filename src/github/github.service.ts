@@ -2,6 +2,8 @@ import { Injectable, HttpException, HttpStatus, UnauthorizedException } from '@n
 import axios from 'axios';
 import { ConfigService } from '@nestjs/config';
 import { RepositoryParamsDto } from './dto/repository-params.dto';
+import { PullRequestContributorsDto, ContributorDto } from './dto/contributor.dto';
+import { RepositoryContributorsDto } from './dto/repo-contributors.dto';
 import { AnthropicService } from '../anthropic/anthropic.service';
 
 @Injectable()
@@ -198,6 +200,162 @@ Keep your summary under 150 words and be specific about what was changed.
       }
       throw new HttpException(
         'Failed to fetch pull request details',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+  
+  async getPullRequestContributors(token: string, params: RepositoryParamsDto, pullNumber: number): Promise<PullRequestContributorsDto> {
+    try {
+      const headers = this.getAuthHeaders(token);
+      const { owner, repo } = params;
+      
+      // First, get the PR to verify it exists and get basic PR information
+      const prResponse = await axios.get(
+        `${this.apiUrl}/repos/${owner}/${repo}/pulls/${pullNumber}`,
+        { headers }
+      );
+      
+      // Get all repository contributors using the dedicated endpoint
+      const contributorsResponse = await axios.get(
+        `${this.apiUrl}/repos/${owner}/${repo}/contributors`,
+        { 
+          headers,
+          params: {
+            page: params.page || 1,
+            per_page: params.perPage || 30,
+            anon: 'false' // Exclude anonymous contributors
+          }
+        }
+      );
+      
+      // Get PR commits to identify active contributors relevant to this PR
+      const commitsResponse = await axios.get(
+        `${this.apiUrl}/repos/${owner}/${repo}/pulls/${pullNumber}/commits`,
+        { headers }
+      );
+      
+      // Extract commit authors to identify who's relevant to this PR
+      const prAuthorLogins = new Set<string>();
+      commitsResponse.data.forEach(commit => {
+        if (commit.author && commit.author.login) {
+          prAuthorLogins.add(commit.author.login);
+        }
+      });
+      
+      // Filter and format contributors relevant to this PR
+      const prContributors = contributorsResponse.data
+        // Only include contributors who made commits to this PR
+        .filter(contributor => prAuthorLogins.has(contributor.login))
+        // Map to our DTO format
+        .map(contributor => ({
+          id: contributor.id,
+          login: contributor.login,
+          avatar_url: contributor.avatar_url,
+          html_url: contributor.html_url,
+          contributions: contributor.contributions
+        }))
+        // Sort by contribution count (most active first)
+        .sort((a, b) => b.contributions - a.contributions);
+      
+      // Extract pagination info from headers if available
+      const linkHeader = contributorsResponse.headers.link;
+      let totalContributors: number | undefined = undefined;
+      
+      // Extract the pagination info
+      if (linkHeader) {
+        // Try to parse total count from header
+        const lastPageMatch = linkHeader.match(/&page=(\d+).*?rel="last"/);
+        if (lastPageMatch && lastPageMatch[1]) {
+          const lastPage = parseInt(lastPageMatch[1], 10);
+          const perPage = params.perPage || 30;
+          totalContributors = lastPage * perPage; // Approximate count
+        }
+      }
+      
+      return {
+        pull_number: pullNumber,
+        repository: `${owner}/${repo}`,
+        contributors: prContributors,
+        pagination: {
+          current_page: params.page || 1,
+          per_page: params.perPage || 30,
+          total_contributors: totalContributors
+        }
+      };
+    } catch (error) {
+      if (error.response) {
+        throw new HttpException(
+          error.response.data.message || 'GitHub API error',
+          error.response.status || HttpStatus.BAD_REQUEST,
+        );
+      }
+      throw new HttpException(
+        'Failed to fetch pull request contributors',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+  
+  async getRepositoryContributors(token: string, params: RepositoryParamsDto): Promise<RepositoryContributorsDto> {
+    try {
+      const headers = this.getAuthHeaders(token);
+      const { owner, repo, page = 1, perPage = 30 } = params;
+      
+      // Fetch repository contributors directly from GitHub API
+      const contributorsResponse = await axios.get(
+        `${this.apiUrl}/repos/${owner}/${repo}/contributors`,
+        { 
+          headers,
+          params: {
+            page,
+            per_page: perPage,
+            anon: 'false' // Exclude anonymous contributors
+          }
+        }
+      );
+      
+      // Map the GitHub API response to our DTO format
+      const contributors = contributorsResponse.data.map(contributor => ({
+        id: contributor.id,
+        login: contributor.login,
+        avatar_url: contributor.avatar_url,
+        html_url: contributor.html_url,
+        contributions: contributor.contributions
+      }));
+      
+      // Extract pagination info from headers if available
+      const linkHeader = contributorsResponse.headers.link;
+      let totalContributors: number | undefined = undefined;
+      
+      // Extract the pagination info
+      if (linkHeader) {
+        // Try to parse total count from header
+        const lastPageMatch = linkHeader.match(/&page=(\d+).*?rel="last"/);
+        if (lastPageMatch && lastPageMatch[1]) {
+          const lastPage = parseInt(lastPageMatch[1], 10);
+          totalContributors = lastPage * perPage; // Approximate count
+        }
+      }
+      
+      return {
+        repository: `${owner}/${repo}`,
+        contributors,
+        pagination: {
+          current_page: page,
+          per_page: perPage,
+          total_contributors: totalContributors
+        }
+      };
+    } catch (error) {
+      if (error.response) {
+        throw new HttpException(
+          error.response.data.message || 'GitHub API error',
+          error.response.status || HttpStatus.BAD_REQUEST,
+        );
+      }
+      throw new HttpException(
+        'Failed to fetch repository contributors',
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
