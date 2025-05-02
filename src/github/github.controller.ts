@@ -68,4 +68,43 @@ export class GitHubController {
     };
     return this.gitHubService.getPullRequestDetails(customGithubToken, params, pullNumber);
   }
+  
+  @Get('repos/:owner/:repo/pulls/:pull_number/contributors')
+  async getPullRequestContributors(
+    @Headers('X-GitHub-Token') customGithubToken: string,
+    @CurrentUser() user: any,
+    @Param('owner') owner: string,
+    @Param('repo') repo: string,
+    @Param('pull_number') pullNumber: number,
+    @Query('page') page?: number,
+    @Query('per_page') perPage?: number,
+  ) {
+    console.log(`Authenticated user: ${user.email} (ID: ${user.sub})`);
+    const params: RepositoryParamsDto = {
+      owner,
+      repo,
+      page,
+      perPage,
+    };
+    return this.gitHubService.getPullRequestContributors(customGithubToken, params, pullNumber);
+  }
+  
+  @Get('repos/:owner/:repo/contributors')
+  async getRepositoryContributors(
+    @Headers('X-GitHub-Token') customGithubToken: string,
+    @CurrentUser() user: any,
+    @Param('owner') owner: string,
+    @Param('repo') repo: string,
+    @Query('page') page?: number,
+    @Query('per_page') perPage?: number,
+  ) {
+    console.log(`Authenticated user: ${user.email} (ID: ${user.sub})`);
+    const params: RepositoryParamsDto = {
+      owner,
+      repo,
+      page,
+      perPage,
+    };
+    return this.gitHubService.getRepositoryContributors(customGithubToken, params);
+  }
 }
