@@ -164,7 +164,7 @@ Keep your summary under 150 words and be specific about what was changed.
   async getPullRequestDetails(token: string, params: RepositoryParamsDto, pullNumber: number) {
     try {
       const headers = this.getAuthHeaders(token);
-      const { owner, repo } = params;
+      const { owner, repo, skipSummary = false } = params;
       
       // Fetch pull request details
       const prResponse = await axios.get(
@@ -182,15 +182,19 @@ Keep your summary under 150 words and be specific about what was changed.
         },
       );
       
-      // Generate summary of files changed using Anthropic
-      const filesSummary = await this.generateFilesSummary(filesResponse.data);
-      
-      // Return combined data with summary
-      return {
+      // Base response with PR and files data
+      const response = {
         ...prResponse.data,
         files: filesResponse.data,
-        prSummary: filesSummary,
       };
+      
+      // Generate summary of files changed only if not skipped
+      if (!skipSummary) {
+        const filesSummary = await this.generateFilesSummary(filesResponse.data);
+        response.prSummary = filesSummary;
+      }
+      
+      return response;
     } catch (error) {
       if (error.response) {
         throw new HttpException(
