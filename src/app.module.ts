@@ -5,6 +5,7 @@ import { Connection } from 'mongoose';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
+import { GitHubModule } from './github/github.module';
 import appConfig from './config/config';
 
 @Module({
@@ -30,6 +31,7 @@ import appConfig from './config/config';
       }),
     }),
     AuthModule,
+    GitHubModule,
   ],
   controllers: [AppController],
   providers: [AppService],
