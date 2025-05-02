@@ -12,7 +12,9 @@ export default registerAs('app', () => ({
   },
   auth: {
     jwtSecret: process.env.JWT_SECRET,
-    jwtExpiresIn: process.env.JWT_EXPIRES_IN || '1d',
+    jwtExpiresIn: process.env.JWT_EXPIRES_IN || '15m',
+    refreshTokenSecret: process.env.REFRESH_TOKEN_SECRET || process.env.JWT_SECRET,
+    refreshTokenExpiresIn: process.env.REFRESH_TOKEN_EXPIRES_IN || '7d',
   },
   anthropic: {
     apiKey: process.env.ANTHROPIC_API_KEY,

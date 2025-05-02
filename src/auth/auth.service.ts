@@ -2,41 +2,122 @@ import {
   ConflictException,
   Injectable,
   UnauthorizedException,
+  NotFoundException,
+  BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
+import { ConfigService } from '@nestjs/config';
+import { JwtService } from '@nestjs/jwt';
 import { Model } from 'mongoose';
+import * as bcrypt from 'bcryptjs';
+import { Request } from 'express';
 import { LoginDto } from './dto/login.dto';
 import { SignupDto } from './dto/signup.dto';
 import { VerifyTokenDto } from './dto/verify-token.dto';
-import { User, UserDocument } from './schemas/user.schema';
+import { RefreshTokenDto } from './dto/refresh-token.dto';
+import { User, UserDocument, RefreshToken } from './schemas/user.schema';
 
 @Injectable()
 export class AuthService {
-  constructor(@InjectModel(User.name) private userModel: Model<UserDocument>) {}
+  constructor(
+    @InjectModel(User.name) private userModel: Model<UserDocument>,
+    private jwtService: JwtService,
+    private configService: ConfigService,
+  ) {}
+  
+  // Helper methods for tokens and password management
+  private async generateTokens(userId: string, email: string) {
+    const accessTokenPayload = { sub: userId, email };
+    const refreshTokenPayload = { sub: userId };
+    
+    const accessToken = this.jwtService.sign(accessTokenPayload);
+    
+    // Create refresh token with longer expiry
+    const refreshTokenExpiry = this.configService.get<string>('app.auth.refreshTokenExpiresIn') || '7d';
+    const refreshToken = this.jwtService.sign(refreshTokenPayload, {
+      secret: this.configService.get<string>('app.auth.refreshTokenSecret'),
+      expiresIn: refreshTokenExpiry,
+    });
+    
+    return { accessToken, refreshToken };
+  }
+  
+  private async hashPassword(password: string): Promise<string> {
+    const salt = await bcrypt.genSalt(10);
+    return bcrypt.hash(password, salt);
+  }
+  
+  private async verifyPassword(plainPassword: string, hashedPassword: string): Promise<boolean> {
+    return bcrypt.compare(plainPassword, hashedPassword);
+  }
+  
+  private getIpFromRequest(request: Request): string {
+    return request.ip || 'unknown';
+  }
+  
+  private async saveRefreshToken(userId: string, token: string, ipAddress: string): Promise<void> {
+    const user = await this.userModel.findById(userId);
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+    
+    // Set token expiry date
+    const refreshTokenExpiry = this.configService.get<string>('app.auth.refreshTokenExpiresIn') || '7d';
+    const expiryDays = parseInt(refreshTokenExpiry.replace('d', ''), 10) || 7;
+    const expires = new Date();
+    expires.setDate(expires.getDate() + expiryDays);
+    
+    // Create refresh token record
+    const refreshToken: RefreshToken = {
+      token,
+      expires,
+      createdAt: new Date(),
+      createdByIp: ipAddress,
+      isActive: true,
+    };
+    
+    // Add token to user's refresh tokens
+    user.refreshTokens.push(refreshToken);
+    await user.save();
+  }
 
-  async login(loginDto: LoginDto) {
+  async login(loginDto: LoginDto, request?: Request) {
     const { email, password } = loginDto;
+    const ipAddress = request ? this.getIpFromRequest(request) : 'unknown';
 
     // Find user by email
     const user = await this.userModel.findOne({ email }).exec();
-
-    // Verify password (in a real app, you would compare hashed passwords)
-    if (user && user.password === password) {
-      // Generate a token (in a real app, you would use JWT)
-      const token = `token-${Date.now()}-${user._id}`;
-
-      // Add token to user's tokens array
-      user.tokens.push(token);
-      await user.save();
-
-      return {
-        token: token,
-        user: {
-          id: user._id,
-          email: user.email,
-          isVerified: user.isVerified,
-        },
-      };
+    
+    // Check if user exists and password is correct
+    if (user) {
+      // If we're using bcrypt, we need to verify the password
+      const passwordIsValid = await this.verifyPassword(password, user.password);
+      
+      // For backward compatibility, also check plain password
+      const plainPasswordValid = user.password === password;
+      
+      if (passwordIsValid || plainPasswordValid) {
+        // Generate JWT tokens
+        const { accessToken, refreshToken } = await this.generateTokens(
+          user._id.toString(),
+          user.email,
+        );
+        
+        // Save refresh token
+        await this.saveRefreshToken(user._id.toString(), refreshToken, ipAddress);
+        
+        // Return tokens and user info
+        return {
+          accessToken,
+          refreshToken,
+          user: {
+            id: user._id,
+            email: user.email,
+            isVerified: user.isVerified,
+          },
+        };
+      }
     }
 
     // For demo purposes, accept any login with a "@example.com" email
@@ -46,19 +127,28 @@ export class AuthService {
       let demoUser = await this.userModel.findOne({ email }).exec();
 
       if (!demoUser) {
+        // Hash the password for new users
+        const hashedPassword = await this.hashPassword(password);
+        
         demoUser = new this.userModel({
           email,
-          password,
+          password: hashedPassword,
         });
         await demoUser.save();
       }
 
-      const token = `token-${Date.now()}-${demoUser._id}`;
-      demoUser.tokens.push(token);
-      await demoUser.save();
+      // Generate tokens
+      const { accessToken, refreshToken } = await this.generateTokens(
+        demoUser._id.toString(),
+        demoUser.email,
+      );
+      
+      // Save refresh token
+      await this.saveRefreshToken(demoUser._id.toString(), refreshToken, ipAddress);
 
       return {
-        accessToken: token,
+        accessToken,
+        refreshToken,
         user: {
           id: demoUser._id,
           email,
@@ -70,8 +160,9 @@ export class AuthService {
     throw new UnauthorizedException('Invalid credentials');
   }
 
-  async signup(signupDto: SignupDto) {
+  async signup(signupDto: SignupDto, request?: Request) {
     const { email, password } = signupDto;
+    const ipAddress = request ? this.getIpFromRequest(request) : 'unknown';
 
     // Check if email already exists
     const existingUser = await this.userModel.findOne({ email }).exec();
@@ -79,22 +170,31 @@ export class AuthService {
       throw new ConflictException('Email already exists');
     }
 
+    // Hash the password
+    const hashedPassword = await this.hashPassword(password);
+
     // Create new user
     const newUser = new this.userModel({
       email,
-      password, // In a real app, you would hash this password
+      password: hashedPassword,
       isVerified: false,
     });
-
-    // Generate auth token
-    const token = `token-${Date.now()}-${newUser._id}`;
-    newUser.tokens.push(token);
 
     // Save user to database
     await newUser.save();
 
+    // Generate JWT tokens
+    const { accessToken, refreshToken } = await this.generateTokens(
+      newUser._id.toString(),
+      newUser.email,
+    );
+    
+    // Save refresh token
+    await this.saveRefreshToken(newUser._id.toString(), refreshToken, ipAddress);
+
     return {
-      verificationToken: token,
+      accessToken,
+      refreshToken,
       user: {
         id: newUser._id,
         email,
@@ -106,21 +206,95 @@ export class AuthService {
   async verifyToken(verifyTokenDto: VerifyTokenDto) {
     const { token } = verifyTokenDto;
 
-    // Find user with this token
-    const user = await this.userModel.findOne({ tokens: token }).exec();
-
-    if (user) {
+    try {
+      // Verify the JWT token
+      const payload = this.jwtService.verify(token);
+      const userId = payload.sub;
+      
+      // Find the user
+      const user = await this.userModel.findById(userId).exec();
+      
+      if (!user) {
+        throw new UnauthorizedException('User not found');
+      }
+      
       return {
         valid: true,
-        token: 'test',
         user: {
           id: user._id,
           email: user.email,
           isVerified: user.isVerified,
         },
       };
+    } catch (error) {
+      throw new UnauthorizedException('Invalid or expired token');
     }
-
-    throw new UnauthorizedException('Invalid token');
+  }
+  
+  async refreshToken(refreshTokenDto: RefreshTokenDto, request?: Request) {
+    const { refreshToken } = refreshTokenDto;
+    const ipAddress = request ? this.getIpFromRequest(request) : 'unknown';
+    
+    try {
+      // Verify the refresh token with the refresh token secret
+      const payload = this.jwtService.verify(refreshToken, {
+        secret: this.configService.get<string>('app.auth.refreshTokenSecret'),
+      });
+      
+      const userId = payload.sub;
+      
+      // Find user and check if this refresh token exists and is active
+      const user = await this.userModel.findById(userId).exec();
+      
+      if (!user) {
+        throw new NotFoundException('User not found');
+      }
+      
+      // Find the refresh token in the user's tokens
+      const storedToken = user.refreshTokens.find(
+        (rt) => rt.token === refreshToken && rt.isActive
+      );
+      
+      if (!storedToken) {
+        throw new ForbiddenException('Invalid refresh token');
+      }
+      
+      // Check if token is expired
+      if (new Date() > storedToken.expires) {
+        throw new UnauthorizedException('Refresh token expired');
+      }
+      
+      // Generate new tokens
+      const { accessToken, refreshToken: newRefreshToken } = await this.generateTokens(
+        user._id.toString(),
+        user.email,
+      );
+      
+      // Revoke the old refresh token
+      storedToken.revoked = new Date();
+      storedToken.revokedByIp = ipAddress;
+      storedToken.replacedByToken = newRefreshToken;
+      storedToken.isActive = false;
+      
+      // Save the new refresh token
+      await this.saveRefreshToken(user._id.toString(), newRefreshToken, ipAddress);
+      
+      return {
+        accessToken,
+        refreshToken: newRefreshToken,
+        user: {
+          id: user._id,
+          email: user.email,
+          isVerified: user.isVerified,
+        },
+      };
+    } catch (error) {
+      if (error instanceof UnauthorizedException || 
+          error instanceof NotFoundException || 
+          error instanceof ForbiddenException) {
+        throw error;
+      }
+      throw new UnauthorizedException('Invalid refresh token');
+    }
   }
 }
