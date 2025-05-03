@@ -5,6 +5,7 @@ import {
   NotFoundException,
   BadRequestException,
   ForbiddenException,
+  InternalServerErrorException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { ConfigService } from '@nestjs/config';
@@ -16,7 +17,9 @@ import { LoginDto } from './dto/login.dto';
 import { SignupDto } from './dto/signup.dto';
 import { VerifyTokenDto } from './dto/verify-token.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
+import { DecryptCredentialsDto, DecryptedCredentialsResponseDto } from './dto/decrypt-credentials.dto';
 import { User, UserDocument, RefreshToken } from './schemas/user.schema';
+import { CryptoUtil } from './utils/crypto.util';
 
 @Injectable()
 export class AuthService {
@@ -107,15 +110,22 @@ export class AuthService {
         // Save refresh token
         await this.saveRefreshToken(user._id.toString(), refreshToken, ipAddress);
         
-        // Return tokens and user info
+        // Encrypt email and password with symmetric key
+        const encryptedEmail = CryptoUtil.encrypt(email);
+        const encryptedPassword = CryptoUtil.encrypt(password);
+        
+        // Return tokens, user info, and encrypted credentials
         return {
           accessToken,
           refreshToken,
           user: {
             id: user._id,
-            email: user.email,
             isVerified: user.isVerified,
           },
+          encryptedCredentials: {
+            email: encryptedEmail,
+            password: encryptedPassword
+          }
         };
       }
     }
@@ -145,6 +155,10 @@ export class AuthService {
       
       // Save refresh token
       await this.saveRefreshToken(demoUser._id.toString(), refreshToken, ipAddress);
+      
+      // Encrypt email and password with symmetric key
+      const encryptedEmail = CryptoUtil.encrypt(email);
+      const encryptedPassword = CryptoUtil.encrypt(password);
 
       return {
         accessToken,
@@ -154,6 +168,10 @@ export class AuthService {
           email,
           isVerified: demoUser.isVerified,
         },
+        encryptedCredentials: {
+          email: encryptedEmail,
+          password: encryptedPassword
+        }
       };
     }
 
@@ -295,6 +313,42 @@ export class AuthService {
         throw error;
       }
       throw new UnauthorizedException('Invalid refresh token');
+    }
+  }
+  
+  /**
+   * Decrypt credentials (email and password) for integration with other services
+   */
+  async decryptCredentials(decryptCredentialsDto: DecryptCredentialsDto): Promise<DecryptedCredentialsResponseDto> {
+    try {
+      const { encryptedEmail, encryptedPassword } = decryptCredentialsDto;
+      
+      // Validate that both inputs are provided
+      if (!encryptedEmail || !encryptedPassword) {
+        throw new BadRequestException('Both encryptedEmail and encryptedPassword are required');
+      }
+      
+      // Decrypt the credentials
+      const decryptedEmail = CryptoUtil.decrypt(encryptedEmail);
+      const decryptedPassword = CryptoUtil.decrypt(encryptedPassword);
+      
+      return {
+        email: decryptedEmail,
+        password: decryptedPassword
+      };
+    } catch (error) {
+      // Handle specific decryption errors
+      if (error.message && error.message.includes('decrypt')) {
+        throw new BadRequestException('Failed to decrypt credentials. The encrypted data may be invalid or corrupted.');
+      }
+      
+      // Rethrow any BadRequestExceptions
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      
+      // Catch-all for unexpected errors
+      throw new InternalServerErrorException('An error occurred while decrypting credentials');
     }
   }
 }

@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { RepositoryParamsDto } from './dto/repository-params.dto';
 import { PullRequestContributorsDto, ContributorDto } from './dto/contributor.dto';
 import { RepositoryContributorsDto } from './dto/repo-contributors.dto';
+import { GithubEmailDto, GithubEmailsResponseDto } from './dto/github-email.dto';
 import { AnthropicService } from '../anthropic/anthropic.service';
 
 @Injectable()
@@ -360,6 +361,45 @@ Keep your summary under 150 words and be specific about what was changed.
       }
       throw new HttpException(
         'Failed to fetch repository contributors',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+  
+  /**
+   * Get authenticated user's emails using the GitHub API
+   * @param token GitHub access token
+   * @returns List of user's email addresses
+   */
+  async getUserEmails(token: string): Promise<GithubEmailsResponseDto> {
+    try {
+      const headers = this.getAuthHeaders(token);
+      
+      // Call the GitHub User Emails API endpoint
+      const response = await axios.get(`${this.apiUrl}/user/emails`, {
+        headers,
+      });
+      
+      // Map the response to our DTO format
+      const emails: GithubEmailDto[] = response.data.map(email => ({
+        email: email.email,
+        primary: email.primary,
+        verified: email.verified,
+        visibility: email.visibility
+      }));
+      
+      return {
+        emails
+      };
+    } catch (error) {
+      if (error.response) {
+        throw new HttpException(
+          error.response.data.message || 'GitHub API error',
+          error.response.status || HttpStatus.BAD_REQUEST,
+        );
+      }
+      throw new HttpException(
+        'Failed to fetch GitHub user emails',
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }

@@ -6,4 +6,8 @@ export class AuthResponseDto {
     email: string;
     isVerified: boolean;
   };
+  encryptedCredentials?: {
+    email: string;
+    password: string;
+  };
 }

@@ -7,6 +7,7 @@ import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
 import { GitHubModule } from './github/github.module';
 import { AnthropicModule } from './anthropic/anthropic.module';
+import { JournalModule } from './journal/journal.module';
 import appConfig from './config/config';
 
 @Module({
@@ -34,6 +35,7 @@ import appConfig from './config/config';
     AuthModule,
     GitHubModule,
     AnthropicModule,
+    JournalModule,
   ],
   controllers: [AppController],
   providers: [AppService],

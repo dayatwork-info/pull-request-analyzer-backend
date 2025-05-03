@@ -19,6 +19,14 @@ export class GitHubController {
   ) {
     return this.gitHubService.getUserDetails(customGithubToken);
   }
+  
+  @Get('user/emails')
+  async getUserEmails(
+    @Headers('X-GitHub-Token') customGithubToken: string,
+    @CurrentUser() user: any,
+  ) {
+    return this.gitHubService.getUserEmails(customGithubToken);
+  }
 
   @Get('repositories')
   async getRepositories(
