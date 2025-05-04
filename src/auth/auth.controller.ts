@@ -25,14 +25,17 @@ export class AuthController {
   async verifyToken(@Body() verifyTokenDto: VerifyTokenDto) {
     return this.authService.verifyToken(verifyTokenDto);
   }
-  
+
   @Post('refresh-token')
-  async refreshToken(@Body() refreshTokenDto: RefreshTokenDto, @Req() req: Request) {
+  async refreshToken(
+    @Body() refreshTokenDto: RefreshTokenDto,
+    @Req() req: Request,
+  ) {
     return this.authService.refreshToken(refreshTokenDto, req);
   }
 
   @Post('decrypt-credentials')
-  async decryptCredentials(@Body() decryptCredentialsDto: DecryptCredentialsDto) {
+  decryptCredentials(@Body() decryptCredentialsDto: DecryptCredentialsDto) {
     return this.authService.decryptCredentials(decryptCredentialsDto);
   }
 }

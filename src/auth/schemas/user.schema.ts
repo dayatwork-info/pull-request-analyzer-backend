@@ -40,9 +40,12 @@ export class User {
 
   @Prop({ default: false })
   isVerified: boolean;
-  
+
   @Prop({ type: [RefreshTokenSchema], default: [] })
   refreshTokens: RefreshToken[];
+  
+  @Prop({ type: Map, of: String, default: {} })
+  prJournalMap: Map<string, string>;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);

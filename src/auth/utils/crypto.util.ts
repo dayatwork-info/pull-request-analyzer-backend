@@ -20,9 +20,10 @@ export class CryptoUtil {
    */
   private static getKey(): Buffer {
     if (!this.keyCache) {
-      const encryptionKey = this.configService.get<string>('app.auth.encryptionKey')
-        
-      
+      const encryptionKey = this.configService.get<string>(
+        'app.auth.encryptionKey',
+      );
+
       // Use non-null assertion as we always have a default value
       this.keyCache = crypto.scryptSync(encryptionKey!, 'salt', 32);
     }

@@ -10,7 +10,7 @@ import { JwtModule } from '@nestjs/jwt';
 @Module({
   imports: [
     MongooseModule.forFeature([{ name: User.name, schema: UserSchema }]),
-    GitHubModule, 
+    GitHubModule,
     ConfigModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],

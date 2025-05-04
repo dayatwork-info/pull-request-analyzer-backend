@@ -20,7 +20,9 @@ export default registerAs('app', () => ({
   anthropic: {
     apiKey: process.env.ANTHROPIC_API_KEY,
     modelName: process.env.ANTHROPIC_MODEL_NAME,
-    maxTokens: process.env.ANTHROPIC_MAX_TOKENS ? parseInt(process.env.ANTHROPIC_MAX_TOKENS, 10) : 1000,
+    maxTokens: process.env.ANTHROPIC_MAX_TOKENS
+      ? parseInt(process.env.ANTHROPIC_MAX_TOKENS, 10)
+      : 1000,
   },
   github: {
     apiUrl: process.env.GITHUB_API_URL,

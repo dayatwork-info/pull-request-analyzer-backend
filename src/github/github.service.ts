@@ -1,50 +1,63 @@
-import { Injectable, HttpException, HttpStatus, UnauthorizedException } from '@nestjs/common';
+import {
+  Injectable,
+  HttpException,
+  HttpStatus,
+  UnauthorizedException,
+} from '@nestjs/common';
 import axios from 'axios';
 import { ConfigService } from '@nestjs/config';
 import { RepositoryParamsDto } from './dto/repository-params.dto';
-import { PullRequestContributorsDto, ContributorDto } from './dto/contributor.dto';
+import {
+  PullRequestContributorsDto,
+  ContributorDto,
+} from './dto/contributor.dto';
 import { RepositoryContributorsDto } from './dto/repo-contributors.dto';
-import { GithubEmailDto, GithubEmailsResponseDto } from './dto/github-email.dto';
+import {
+  GithubEmailDto,
+  GithubEmailsResponseDto,
+} from './dto/github-email.dto';
 import { AnthropicService } from '../anthropic/anthropic.service';
 
 @Injectable()
 export class GitHubService {
   private readonly apiUrl: string;
-  
+
   constructor(
     private configService: ConfigService,
     private anthropicService: AnthropicService,
   ) {
-    this.apiUrl = this.configService.get<string>('app.github.apiUrl') || 'https://api.github.com';
+    this.apiUrl =
+      this.configService.get<string>('app.github.apiUrl') ||
+      'https://api.github.com';
   }
-  
+
   private getAuthHeaders(token: string) {
     if (!token) {
       throw new UnauthorizedException('GitHub token is required');
     }
-    
+
     return {
       Authorization: `token ${token}`,
       Accept: 'application/vnd.github.v3+json',
     };
   }
-  
+
   private async generateFilesSummary(files: any[]) {
     try {
       if (!files || files.length === 0) {
         return 'No files changed in this pull request.';
       }
-      
+
       // Create a condensed representation of the files for the prompt
-      const fileDetails = files.map(file => ({
+      const fileDetails = files.map((file) => ({
         filename: file.filename,
         status: file.status, // added, modified, removed
         additions: file.additions,
         deletions: file.deletions,
         changes: file.changes,
-        patch: file.patch?.substring(0, 500) // Limit patch size to avoid token limits
+        patch: file.patch?.substring(0, 500), // Limit patch size to avoid token limits
       }));
-      
+
       const prompt = `
 You are an expert code reviewer. Analyze the following files changed in a pull request and provide a concise summary:
 
@@ -58,10 +71,10 @@ Focus on:
 
 Keep your summary under 150 words and be specific about what was changed.
 `;
-      
+
       // Call Anthropic API
       const response = await this.anthropicService.createMessage(prompt);
-      
+
       // Safely extract the text from the content block
       if (response.content && response.content.length > 0) {
         const contentBlock = response.content[0];
@@ -70,7 +83,7 @@ Keep your summary under 150 words and be specific about what was changed.
           return contentBlock.text;
         }
       }
-      
+
       return 'Could not generate summary.';
     } catch (error) {
       console.error('Error generating files summary:', error);
@@ -84,7 +97,7 @@ Keep your summary under 150 words and be specific about what was changed.
       const response = await axios.get(`${this.apiUrl}/user`, {
         headers,
       });
-      
+
       return response.data;
     } catch (error) {
       if (error.response) {
@@ -112,7 +125,7 @@ Keep your summary under 150 words and be specific about what was changed.
           direction: 'desc',
         },
       });
-      
+
       return response.data;
     } catch (error) {
       if (error.response) {
@@ -132,7 +145,7 @@ Keep your summary under 150 words and be specific about what was changed.
     try {
       const headers = this.getAuthHeaders(token);
       const { owner, repo, page = 1, perPage = 30, state = 'all' } = params;
-      
+
       const response = await axios.get(
         `${this.apiUrl}/repos/${owner}/${repo}/pulls`,
         {
@@ -146,7 +159,7 @@ Keep your summary under 150 words and be specific about what was changed.
           },
         },
       );
-      
+
       return response.data;
     } catch (error) {
       if (error.response) {
@@ -162,11 +175,15 @@ Keep your summary under 150 words and be specific about what was changed.
     }
   }
 
-  async getPullRequestDetails(token: string, params: RepositoryParamsDto, pullNumber: number) {
+  async getPullRequestDetails(
+    token: string,
+    params: RepositoryParamsDto,
+    pullNumber: number,
+  ) {
     try {
       const headers = this.getAuthHeaders(token);
       const { owner, repo, skipSummary = false } = params;
-      
+
       // Fetch pull request details
       const prResponse = await axios.get(
         `${this.apiUrl}/repos/${owner}/${repo}/pulls/${pullNumber}`,
@@ -174,7 +191,7 @@ Keep your summary under 150 words and be specific about what was changed.
           headers,
         },
       );
-      
+
       // Fetch files changed in the pull request
       const filesResponse = await axios.get(
         `${this.apiUrl}/repos/${owner}/${repo}/pulls/${pullNumber}/files`,
@@ -182,19 +199,21 @@ Keep your summary under 150 words and be specific about what was changed.
           headers,
         },
       );
-      
+
       // Base response with PR and files data
       const response = {
         ...prResponse.data,
         files: filesResponse.data,
       };
-      
+
       // Generate summary of files changed only if not skipped
       if (!skipSummary) {
-        const filesSummary = await this.generateFilesSummary(filesResponse.data);
+        const filesSummary = await this.generateFilesSummary(
+          filesResponse.data,
+        );
         response.prSummary = filesSummary;
       }
-      
+
       return response;
     } catch (error) {
       if (error.response) {
@@ -209,64 +228,68 @@ Keep your summary under 150 words and be specific about what was changed.
       );
     }
   }
-  
-  async getPullRequestContributors(token: string, params: RepositoryParamsDto, pullNumber: number): Promise<PullRequestContributorsDto> {
+
+  async getPullRequestContributors(
+    token: string,
+    params: RepositoryParamsDto,
+    pullNumber: number,
+  ): Promise<PullRequestContributorsDto> {
     try {
       const headers = this.getAuthHeaders(token);
       const { owner, repo } = params;
-      
+
       // First, get the PR to verify it exists and get basic PR information
       const prResponse = await axios.get(
         `${this.apiUrl}/repos/${owner}/${repo}/pulls/${pullNumber}`,
-        { headers }
+        { headers },
       );
-      
+
       // Get all repository contributors using the dedicated endpoint
       const contributorsResponse = await axios.get(
         `${this.apiUrl}/repos/${owner}/${repo}/contributors`,
-        { 
+        {
           headers,
           params: {
             page: params.page || 1,
             per_page: params.perPage || 30,
-            anon: 'false' // Exclude anonymous contributors
-          }
-        }
+            anon: 'false', // Exclude anonymous contributors
+          },
+        },
       );
-      
+
       // Get PR commits to identify active contributors relevant to this PR
       const commitsResponse = await axios.get(
         `${this.apiUrl}/repos/${owner}/${repo}/pulls/${pullNumber}/commits`,
-        { headers }
+        { headers },
       );
-      
+
       // Extract commit authors to identify who's relevant to this PR
       const prAuthorLogins = new Set<string>();
-      commitsResponse.data.forEach(commit => {
+      commitsResponse.data.forEach((commit) => {
         if (commit.author && commit.author.login) {
           prAuthorLogins.add(commit.author.login);
         }
       });
-      
+
       // Filter and format contributors relevant to this PR
       const prContributors = contributorsResponse.data
         // Only include contributors who made commits to this PR
-        .filter(contributor => prAuthorLogins.has(contributor.login))
+        .filter((contributor) => prAuthorLogins.has(contributor.login))
         // Map to our DTO format
-        .map(contributor => ({
+        .map((contributor) => ({
           id: contributor.id,
           login: contributor.login,
           avatar_url: contributor.avatar_url,
           html_url: contributor.html_url,
-          contributions: contributor.contributions
+          contributions: contributor.contributions,
         }))
         // Sort by contribution count (most active first)
         .sort((a, b) => b.contributions - a.contributions);
-      
+
       // Extract pagination info from headers if available
       const linkHeader = contributorsResponse.headers.link;
       let totalContributors: number | undefined = undefined;
-      
+
       // Extract the pagination info
       if (linkHeader) {
         // Try to parse total count from header
@@ -277,7 +300,7 @@ Keep your summary under 150 words and be specific about what was changed.
           totalContributors = lastPage * perPage; // Approximate count
         }
       }
-      
+
       return {
         pull_number: pullNumber,
         repository: `${owner}/${repo}`,
@@ -285,8 +308,8 @@ Keep your summary under 150 words and be specific about what was changed.
         pagination: {
           current_page: params.page || 1,
           per_page: params.perPage || 30,
-          total_contributors: totalContributors
-        }
+          total_contributors: totalContributors,
+        },
       };
     } catch (error) {
       if (error.response) {
@@ -301,38 +324,41 @@ Keep your summary under 150 words and be specific about what was changed.
       );
     }
   }
-  
-  async getRepositoryContributors(token: string, params: RepositoryParamsDto): Promise<RepositoryContributorsDto> {
+
+  async getRepositoryContributors(
+    token: string,
+    params: RepositoryParamsDto,
+  ): Promise<RepositoryContributorsDto> {
     try {
       const headers = this.getAuthHeaders(token);
       const { owner, repo, page = 1, perPage = 30 } = params;
-      
+
       // Fetch repository contributors directly from GitHub API
       const contributorsResponse = await axios.get(
         `${this.apiUrl}/repos/${owner}/${repo}/contributors`,
-        { 
+        {
           headers,
           params: {
             page,
             per_page: perPage,
-            anon: 'false' // Exclude anonymous contributors
-          }
-        }
+            anon: 'false', // Exclude anonymous contributors
+          },
+        },
       );
-      
+
       // Map the GitHub API response to our DTO format
-      const contributors = contributorsResponse.data.map(contributor => ({
+      const contributors = contributorsResponse.data.map((contributor) => ({
         id: contributor.id,
         login: contributor.login,
         avatar_url: contributor.avatar_url,
         html_url: contributor.html_url,
-        contributions: contributor.contributions
+        contributions: contributor.contributions,
       }));
-      
+
       // Extract pagination info from headers if available
       const linkHeader = contributorsResponse.headers.link;
       let totalContributors: number | undefined = undefined;
-      
+
       // Extract the pagination info
       if (linkHeader) {
         // Try to parse total count from header
@@ -342,15 +368,15 @@ Keep your summary under 150 words and be specific about what was changed.
           totalContributors = lastPage * perPage; // Approximate count
         }
       }
-      
+
       return {
         repository: `${owner}/${repo}`,
         contributors,
         pagination: {
           current_page: page,
           per_page: perPage,
-          total_contributors: totalContributors
-        }
+          total_contributors: totalContributors,
+        },
       };
     } catch (error) {
       if (error.response) {
@@ -365,7 +391,7 @@ Keep your summary under 150 words and be specific about what was changed.
       );
     }
   }
-  
+
   /**
    * Get authenticated user's emails using the GitHub API
    * @param token GitHub access token
@@ -374,22 +400,22 @@ Keep your summary under 150 words and be specific about what was changed.
   async getUserEmails(token: string): Promise<GithubEmailsResponseDto> {
     try {
       const headers = this.getAuthHeaders(token);
-      
+
       // Call the GitHub User Emails API endpoint
       const response = await axios.get(`${this.apiUrl}/user/emails`, {
         headers,
       });
-      
+
       // Map the response to our DTO format
-      const emails: GithubEmailDto[] = response.data.map(email => ({
+      const emails: GithubEmailDto[] = response.data.map((email) => ({
         email: email.email,
         primary: email.primary,
         verified: email.verified,
-        visibility: email.visibility
+        visibility: email.visibility,
       }));
-      
+
       return {
-        emails
+        emails,
       };
     } catch (error) {
       if (error.response) {

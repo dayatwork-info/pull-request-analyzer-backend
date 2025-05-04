@@ -1,4 +1,11 @@
-import { Controller, Get, Headers, Query, Param, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Headers,
+  Query,
+  Param,
+  UseGuards,
+} from '@nestjs/common';
 import { GitHubService } from './github.service';
 import { RepositoryParamsDto } from './dto/repository-params.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -8,7 +15,7 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 @UseGuards(JwtAuthGuard) // Protect all routes with JWT authentication
 export class GitHubController {
   constructor(private readonly gitHubService: GitHubService) {}
-  
+
   // Note: We're using JWT for authenticating users to our system,
   // but we still need the GitHub token from headers to access GitHub API
 
@@ -19,7 +26,7 @@ export class GitHubController {
   ) {
     return this.gitHubService.getUserDetails(customGithubToken);
   }
-  
+
   @Get('user/emails')
   async getUserEmails(
     @Headers('X-GitHub-Token') customGithubToken: string,
@@ -72,9 +79,13 @@ export class GitHubController {
       repo,
       skipSummary,
     };
-    return this.gitHubService.getPullRequestDetails(customGithubToken, params, pullNumber);
+    return this.gitHubService.getPullRequestDetails(
+      customGithubToken,
+      params,
+      pullNumber,
+    );
   }
-  
+
   @Get('repos/:owner/:repo/pulls/:pull_number/contributors')
   async getPullRequestContributors(
     @Headers('X-GitHub-Token') customGithubToken: string,
@@ -91,9 +102,13 @@ export class GitHubController {
       page,
       perPage,
     };
-    return this.gitHubService.getPullRequestContributors(customGithubToken, params, pullNumber);
+    return this.gitHubService.getPullRequestContributors(
+      customGithubToken,
+      params,
+      pullNumber,
+    );
   }
-  
+
   @Get('repos/:owner/:repo/contributors')
   async getRepositoryContributors(
     @Headers('X-GitHub-Token') customGithubToken: string,
@@ -109,6 +124,9 @@ export class GitHubController {
       page,
       perPage,
     };
-    return this.gitHubService.getRepositoryContributors(customGithubToken, params);
+    return this.gitHubService.getRepositoryContributors(
+      customGithubToken,
+      params,
+    );
   }
 }

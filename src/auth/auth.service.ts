@@ -17,7 +17,10 @@ import { LoginDto } from './dto/login.dto';
 import { SignupDto } from './dto/signup.dto';
 import { VerifyTokenDto } from './dto/verify-token.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
-import { DecryptCredentialsDto, DecryptedCredentialsResponseDto } from './dto/decrypt-credentials.dto';
+import {
+  DecryptCredentialsDto,
+  DecryptedCredentialsResponseDto,
+} from './dto/decrypt-credentials.dto';
 import { User, UserDocument, RefreshToken } from './schemas/user.schema';
 import { CryptoUtil } from './utils/crypto.util';
 
@@ -28,49 +31,58 @@ export class AuthService {
     private jwtService: JwtService,
     private configService: ConfigService,
   ) {}
-  
+
   // Helper methods for tokens and password management
   private async generateTokens(userId: string, email: string) {
     const accessTokenPayload = { sub: userId, email };
     const refreshTokenPayload = { sub: userId };
-    
+
     const accessToken = this.jwtService.sign(accessTokenPayload);
-    
+
     // Create refresh token with longer expiry
-    const refreshTokenExpiry = this.configService.get<string>('app.auth.refreshTokenExpiresIn') || '7d';
+    const refreshTokenExpiry =
+      this.configService.get<string>('app.auth.refreshTokenExpiresIn') || '7d';
     const refreshToken = this.jwtService.sign(refreshTokenPayload, {
       secret: this.configService.get<string>('app.auth.refreshTokenSecret'),
       expiresIn: refreshTokenExpiry,
     });
-    
+
     return { accessToken, refreshToken };
   }
-  
+
   private async hashPassword(password: string): Promise<string> {
     const salt = await bcrypt.genSalt(10);
     return bcrypt.hash(password, salt);
   }
-  
-  private async verifyPassword(plainPassword: string, hashedPassword: string): Promise<boolean> {
+
+  private async verifyPassword(
+    plainPassword: string,
+    hashedPassword: string,
+  ): Promise<boolean> {
     return bcrypt.compare(plainPassword, hashedPassword);
   }
-  
+
   private getIpFromRequest(request: Request): string {
     return request.ip || 'unknown';
   }
-  
-  private async saveRefreshToken(userId: string, token: string, ipAddress: string): Promise<void> {
+
+  private async saveRefreshToken(
+    userId: string,
+    token: string,
+    ipAddress: string,
+  ): Promise<void> {
     const user = await this.userModel.findById(userId);
     if (!user) {
       throw new NotFoundException('User not found');
     }
-    
+
     // Set token expiry date
-    const refreshTokenExpiry = this.configService.get<string>('app.auth.refreshTokenExpiresIn') || '7d';
+    const refreshTokenExpiry =
+      this.configService.get<string>('app.auth.refreshTokenExpiresIn') || '7d';
     const expiryDays = parseInt(refreshTokenExpiry.replace('d', ''), 10) || 7;
     const expires = new Date();
     expires.setDate(expires.getDate() + expiryDays);
-    
+
     // Create refresh token record
     const refreshToken: RefreshToken = {
       token,
@@ -79,7 +91,7 @@ export class AuthService {
       createdByIp: ipAddress,
       isActive: true,
     };
-    
+
     // Add token to user's refresh tokens
     user.refreshTokens.push(refreshToken);
     await user.save();
@@ -91,29 +103,33 @@ export class AuthService {
 
     // Find user by email
     const user = await this.userModel.findOne({ email }).exec();
-    
+
     // Check if user exists and password is correct
     if (user) {
       // If we're using bcrypt, we need to verify the password
-      const passwordIsValid = await this.verifyPassword(password, user.password);
-      
-      // For backward compatibility, also check plain password
-      const plainPasswordValid = user.password === password;
-      
-      if (passwordIsValid || plainPasswordValid) {
+      const passwordIsValid = await this.verifyPassword(
+        password,
+        user.password,
+      );
+
+      if (passwordIsValid) {
         // Generate JWT tokens
         const { accessToken, refreshToken } = await this.generateTokens(
           user._id.toString(),
           user.email,
         );
-        
+
         // Save refresh token
-        await this.saveRefreshToken(user._id.toString(), refreshToken, ipAddress);
-        
+        await this.saveRefreshToken(
+          user._id.toString(),
+          refreshToken,
+          ipAddress,
+        );
+
         // Encrypt email and password with symmetric key
         const encryptedEmail = CryptoUtil.encrypt(email);
         const encryptedPassword = CryptoUtil.encrypt(password);
-        
+
         // Return tokens, user info, and encrypted credentials
         return {
           accessToken,
@@ -124,8 +140,8 @@ export class AuthService {
           },
           encryptedCredentials: {
             email: encryptedEmail,
-            password: encryptedPassword
-          }
+            password: encryptedPassword,
+          },
         };
       }
     }
@@ -139,7 +155,7 @@ export class AuthService {
       if (!demoUser) {
         // Hash the password for new users
         const hashedPassword = await this.hashPassword(password);
-        
+
         demoUser = new this.userModel({
           email,
           password: hashedPassword,
@@ -152,10 +168,14 @@ export class AuthService {
         demoUser._id.toString(),
         demoUser.email,
       );
-      
+
       // Save refresh token
-      await this.saveRefreshToken(demoUser._id.toString(), refreshToken, ipAddress);
-      
+      await this.saveRefreshToken(
+        demoUser._id.toString(),
+        refreshToken,
+        ipAddress,
+      );
+
       // Encrypt email and password with symmetric key
       const encryptedEmail = CryptoUtil.encrypt(email);
       const encryptedPassword = CryptoUtil.encrypt(password);
@@ -170,8 +190,8 @@ export class AuthService {
         },
         encryptedCredentials: {
           email: encryptedEmail,
-          password: encryptedPassword
-        }
+          password: encryptedPassword,
+        },
       };
     }
 
@@ -206,9 +226,13 @@ export class AuthService {
       newUser._id.toString(),
       newUser.email,
     );
-    
+
     // Save refresh token
-    await this.saveRefreshToken(newUser._id.toString(), refreshToken, ipAddress);
+    await this.saveRefreshToken(
+      newUser._id.toString(),
+      refreshToken,
+      ipAddress,
+    );
 
     return {
       accessToken,
@@ -228,14 +252,14 @@ export class AuthService {
       // Verify the JWT token
       const payload = this.jwtService.verify(token);
       const userId = payload.sub;
-      
+
       // Find the user
       const user = await this.userModel.findById(userId).exec();
-      
+
       if (!user) {
         throw new UnauthorizedException('User not found');
       }
-      
+
       return {
         valid: true,
         user: {
@@ -248,55 +272,57 @@ export class AuthService {
       throw new UnauthorizedException('Invalid or expired token');
     }
   }
-  
+
   async refreshToken(refreshTokenDto: RefreshTokenDto, request?: Request) {
     const { refreshToken } = refreshTokenDto;
     const ipAddress = request ? this.getIpFromRequest(request) : 'unknown';
-    
+
     try {
       // Verify the refresh token with the refresh token secret
       const payload = this.jwtService.verify(refreshToken, {
         secret: this.configService.get<string>('app.auth.refreshTokenSecret'),
       });
-      
+
       const userId = payload.sub;
-      
+
       // Find user and check if this refresh token exists and is active
       const user = await this.userModel.findById(userId).exec();
-      
+
       if (!user) {
         throw new NotFoundException('User not found');
       }
-      
+
       // Find the refresh token in the user's tokens
       const storedToken = user.refreshTokens.find(
-        (rt) => rt.token === refreshToken && rt.isActive
+        (rt) => rt.token === refreshToken && rt.isActive,
       );
-      
+
       if (!storedToken) {
         throw new ForbiddenException('Invalid refresh token');
       }
-      
+
       // Check if token is expired
       if (new Date() > storedToken.expires) {
         throw new UnauthorizedException('Refresh token expired');
       }
-      
+
       // Generate new tokens
-      const { accessToken, refreshToken: newRefreshToken } = await this.generateTokens(
-        user._id.toString(),
-        user.email,
-      );
-      
+      const { accessToken, refreshToken: newRefreshToken } =
+        await this.generateTokens(user._id.toString(), user.email);
+
       // Revoke the old refresh token
       storedToken.revoked = new Date();
       storedToken.revokedByIp = ipAddress;
       storedToken.replacedByToken = newRefreshToken;
       storedToken.isActive = false;
-      
+
       // Save the new refresh token
-      await this.saveRefreshToken(user._id.toString(), newRefreshToken, ipAddress);
-      
+      await this.saveRefreshToken(
+        user._id.toString(),
+        newRefreshToken,
+        ipAddress,
+      );
+
       return {
         accessToken,
         refreshToken: newRefreshToken,
@@ -307,48 +333,58 @@ export class AuthService {
         },
       };
     } catch (error) {
-      if (error instanceof UnauthorizedException || 
-          error instanceof NotFoundException || 
-          error instanceof ForbiddenException) {
+      if (
+        error instanceof UnauthorizedException ||
+        error instanceof NotFoundException ||
+        error instanceof ForbiddenException
+      ) {
         throw error;
       }
       throw new UnauthorizedException('Invalid refresh token');
     }
   }
-  
+
   /**
    * Decrypt credentials (email and password) for integration with other services
    */
-  async decryptCredentials(decryptCredentialsDto: DecryptCredentialsDto): Promise<DecryptedCredentialsResponseDto> {
+  decryptCredentials(
+    decryptCredentialsDto: DecryptCredentialsDto,
+  ): DecryptedCredentialsResponseDto {
     try {
       const { encryptedEmail, encryptedPassword } = decryptCredentialsDto;
-      
+
       // Validate that both inputs are provided
       if (!encryptedEmail || !encryptedPassword) {
-        throw new BadRequestException('Both encryptedEmail and encryptedPassword are required');
+        throw new BadRequestException(
+          'Both encryptedEmail and encryptedPassword are required',
+        );
       }
-      
+
       // Decrypt the credentials
       const decryptedEmail = CryptoUtil.decrypt(encryptedEmail);
       const decryptedPassword = CryptoUtil.decrypt(encryptedPassword);
-      
+
       return {
         email: decryptedEmail,
-        password: decryptedPassword
+        password: decryptedPassword,
       };
     } catch (error) {
       // Handle specific decryption errors
       if (error.message && error.message.includes('decrypt')) {
-        throw new BadRequestException('Failed to decrypt credentials. The encrypted data may be invalid or corrupted.');
+        throw new BadRequestException(
+          'Failed to decrypt credentials. The encrypted data may be invalid or corrupted.',
+        );
       }
-      
+
       // Rethrow any BadRequestExceptions
       if (error instanceof BadRequestException) {
         throw error;
       }
-      
+
       // Catch-all for unexpected errors
-      throw new InternalServerErrorException('An error occurred while decrypting credentials');
+      throw new InternalServerErrorException(
+        'An error occurred while decrypting credentials',
+      );
     }
   }
 }

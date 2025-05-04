@@ -1,7 +1,8 @@
-import { Body, Controller, Post, Headers, UseGuards } from '@nestjs/common';
+import { Body, Controller, Post, Get, Headers, UseGuards, Param } from '@nestjs/common';
 import { JournalService } from './journal.service';
 import { CreateJournalDto } from './dto/create-journal.dto';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
+import { CurrentUser } from 'src/auth/decorators/current-user.decorator';
 
 @Controller('journal')
 @UseGuards(JwtAuthGuard)
@@ -11,8 +12,14 @@ export class JournalController {
   @Post('create')
   async createJournal(
     @Body() createJournalDto: CreateJournalDto,
-    @Headers('X-GitHub-Token') githubToken: string
+    @Headers('X-GitHub-Token') githubToken: string,
   ) {
     return this.journalService.createJournal(createJournalDto, githubToken);
+  }
+  
+  @Get('by-pr/:prRef')
+  async getJournalByPrRef(@CurrentUser() user, @Param('prRef') prRef: string) {
+    console.log('test', user)
+    return this.journalService.getJournalByPrRef(user.sub, prRef);
   }
 }

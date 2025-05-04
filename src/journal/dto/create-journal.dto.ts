@@ -12,4 +12,7 @@ export class CreateJournalDto {
 
   @IsNotEmpty()
   content: string;
+
+  @IsNotEmpty()
+  prRef: string;
 }
