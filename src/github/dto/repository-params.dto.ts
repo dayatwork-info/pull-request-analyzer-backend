@@ -1,4 +1,10 @@
-import { IsNotEmpty, IsString, IsOptional, IsNumber, IsBoolean } from 'class-validator';
+import {
+  IsNotEmpty,
+  IsString,
+  IsOptional,
+  IsNumber,
+  IsBoolean,
+} from 'class-validator';
 import { Type, Transform } from 'class-transformer';
 
 export class RepositoryParamsDto {
@@ -23,7 +29,7 @@ export class RepositoryParamsDto {
   @IsOptional()
   @IsString()
   state?: string;
-  
+
   @IsOptional()
   @Transform(({ value }) => {
     if (value === 'true' || value === '1') return true;
