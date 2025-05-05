@@ -15,7 +15,6 @@ import * as bcrypt from 'bcryptjs';
 import { Request } from 'express';
 import { LoginDto } from './dto/login.dto';
 import { SignupDto } from './dto/signup.dto';
-import { VerifyTokenDto } from './dto/verify-token.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import {
   DecryptCredentialsDto,
@@ -245,33 +244,6 @@ export class AuthService {
     };
   }
 
-  async verifyToken(verifyTokenDto: VerifyTokenDto) {
-    const { token } = verifyTokenDto;
-
-    try {
-      // Verify the JWT token
-      const payload = this.jwtService.verify(token);
-      const userId = payload.sub;
-
-      // Find the user
-      const user = await this.userModel.findById(userId).exec();
-
-      if (!user) {
-        throw new UnauthorizedException('User not found');
-      }
-
-      return {
-        valid: true,
-        user: {
-          id: user._id,
-          email: user.email,
-          isVerified: user.isVerified,
-        },
-      };
-    } catch (error) {
-      throw new UnauthorizedException('Invalid or expired token');
-    }
-  }
 
   async refreshToken(refreshTokenDto: RefreshTokenDto, request?: Request) {
     const { refreshToken } = refreshTokenDto;

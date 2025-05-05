@@ -19,7 +19,6 @@ export class JournalController {
   
   @Get('by-pr/:prRef')
   async getJournalByPrRef(@CurrentUser() user, @Param('prRef') prRef: string) {
-    console.log('test', user)
     return this.journalService.getJournalByPrRef(user.sub, prRef);
   }
 }
