@@ -1,10 +1,14 @@
-export class GithubEmailDto {
+/**
+ * GitHub Email DTO based on the GitHub REST API
+ * Reference: https://docs.github.com/en/rest/users/emails#list-email-addresses-for-the-authenticated-user
+ */
+export interface GitHubEmailDto {
   email: string;
   primary: boolean;
   verified: boolean;
-  visibility: string | null;
+  visibility: 'public' | 'private' | null;
 }
 
-export class GithubEmailsResponseDto {
-  emails: GithubEmailDto[];
+export interface GitHubEmailsResponseDto {
+  emails: GitHubEmailDto[];
 }

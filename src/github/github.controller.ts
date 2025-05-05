@@ -9,7 +9,6 @@ import {
 import { GitHubService } from './github.service';
 import { RepositoryParamsDto } from './dto/repository-params.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
 @Controller('github')
 @UseGuards(JwtAuthGuard) // Protect all routes with JWT authentication
@@ -20,25 +19,18 @@ export class GitHubController {
   // but we still need the GitHub token from headers to access GitHub API
 
   @Get('user')
-  async getUserDetails(
-    @Headers('X-GitHub-Token') customGithubToken: string,
-    @CurrentUser() user: any,
-  ) {
+  async getUserDetails(@Headers('X-GitHub-Token') customGithubToken: string) {
     return this.gitHubService.getUserDetails(customGithubToken);
   }
 
   @Get('user/emails')
-  async getUserEmails(
-    @Headers('X-GitHub-Token') customGithubToken: string,
-    @CurrentUser() user: any,
-  ) {
+  async getUserEmails(@Headers('X-GitHub-Token') customGithubToken: string) {
     return this.gitHubService.getUserEmails(customGithubToken);
   }
 
   @Get('repositories')
   async getRepositories(
     @Headers('X-GitHub-Token') customGithubToken: string,
-    @CurrentUser() user: any,
     @Query('page') page?: number,
     @Query('per_page') perPage?: number,
   ) {
@@ -48,7 +40,6 @@ export class GitHubController {
   @Get('repos/:owner/:repo/pulls')
   async getPullRequests(
     @Headers('X-GitHub-Token') customGithubToken: string,
-    @CurrentUser() user: any,
     @Param('owner') owner: string,
     @Param('repo') repo: string,
     @Query('page') page?: number,
@@ -68,7 +59,6 @@ export class GitHubController {
   @Get('repos/:owner/:repo/pulls/:pull_number')
   async getPullRequestDetails(
     @Headers('X-GitHub-Token') customGithubToken: string,
-    @CurrentUser() user: any,
     @Param('owner') owner: string,
     @Param('repo') repo: string,
     @Param('pull_number') pullNumber: number,
@@ -89,7 +79,6 @@ export class GitHubController {
   @Get('repos/:owner/:repo/pulls/:pull_number/contributors')
   async getPullRequestContributors(
     @Headers('X-GitHub-Token') customGithubToken: string,
-    @CurrentUser() user: any,
     @Param('owner') owner: string,
     @Param('repo') repo: string,
     @Param('pull_number') pullNumber: number,
@@ -112,7 +101,6 @@ export class GitHubController {
   @Get('repos/:owner/:repo/contributors')
   async getRepositoryContributors(
     @Headers('X-GitHub-Token') customGithubToken: string,
-    @CurrentUser() user: any,
     @Param('owner') owner: string,
     @Param('repo') repo: string,
     @Query('page') page?: number,

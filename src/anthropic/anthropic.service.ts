@@ -13,13 +13,14 @@ export class AnthropicService {
   }
 
   async createMessage(prompt: string) {
-    // Get model from config and set default if undefined
-    const model =
-      this.configService.get<string>('app.anthropic.modelName') ||
-      'claude-3-opus-20240229';
-    // Get max tokens from config and set default if undefined
-    const maxTokens =
-      this.configService.get<number>('app.anthropic.maxTokens') || 1000;
+    // Get model from config
+    const model = this.configService.get<string>(
+      'app.anthropic.modelName',
+    ) as string;
+    // Get max tokens from config
+    const maxTokens = this.configService.get<number>(
+      'app.anthropic.maxTokens',
+    ) as number;
 
     const response = await this.anthropic.messages.create({
       model,

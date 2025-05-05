@@ -1,4 +1,12 @@
-import { Body, Controller, Post, Get, Headers, UseGuards, Param } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Post,
+  Get,
+  Headers,
+  UseGuards,
+  Param,
+} from '@nestjs/common';
 import { JournalService } from './journal.service';
 import { CreateJournalDto } from './dto/create-journal.dto';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
@@ -16,9 +24,12 @@ export class JournalController {
   ) {
     return this.journalService.createJournal(createJournalDto, githubToken);
   }
-  
+
   @Get('by-pr/:prRef')
-  async getJournalByPrRef(@CurrentUser() user, @Param('prRef') prRef: string) {
+  async getJournalByPrRef(
+    @CurrentUser() user: { sub: string },
+    @Param('prRef') prRef: string,
+  ) {
     return this.journalService.getJournalByPrRef(user.sub, prRef);
   }
 }

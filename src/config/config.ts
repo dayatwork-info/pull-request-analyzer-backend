@@ -1,8 +1,8 @@
 import { registerAs } from '@nestjs/config';
 
 export default registerAs('app', () => ({
-  environment: process.env.NODE_ENV || 'development',
-  port: process.env.PORT ? parseInt(process.env.PORT, 10) : 3000,
+  environment: process.env.NODE_ENV,
+  port: process.env.PORT ? parseInt(process.env.PORT, 10) : undefined,
   database: {
     uri: process.env.MONGODB_URI,
     name: process.env.DB_NAME,
@@ -22,12 +22,12 @@ export default registerAs('app', () => ({
     modelName: process.env.ANTHROPIC_MODEL_NAME,
     maxTokens: process.env.ANTHROPIC_MAX_TOKENS
       ? parseInt(process.env.ANTHROPIC_MAX_TOKENS, 10)
-      : 1000,
+      : undefined,
   },
   github: {
     apiUrl: process.env.GITHUB_API_URL,
   },
   journal: {
-    origin: process.env.WORK_JOURNAL_ORIGIN || 'http://localhost:3001',
+    origin: process.env.WORK_JOURNAL_ORIGIN,
   },
 }));

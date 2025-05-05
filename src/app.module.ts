@@ -2,8 +2,6 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
 import { Connection } from 'mongoose';
-import { AppController } from './app.controller';
-import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
 import { GitHubModule } from './github/github.module';
 import { AnthropicModule } from './anthropic/anthropic.module';
@@ -37,7 +35,5 @@ import appConfig from './config/config';
     AnthropicModule,
     JournalModule,
   ],
-  controllers: [AppController],
-  providers: [AppService],
 })
 export class AppModule {}

@@ -24,8 +24,11 @@ export class CryptoUtil {
         'app.auth.encryptionKey',
       );
 
-      // Use non-null assertion as we always have a default value
-      this.keyCache = crypto.scryptSync(encryptionKey!, 'salt', 32);
+      if (!encryptionKey) {
+        throw new Error('Encryption key is not set in environment variables');
+      }
+
+      this.keyCache = crypto.scryptSync(encryptionKey, 'salt', 32);
     }
     return this.keyCache;
   }
