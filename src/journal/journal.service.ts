@@ -22,30 +22,30 @@ export class JournalService {
     private readonly githubService: GitHubService,
     private readonly configService: ConfigService,
   ) {}
-  
+
   async getJournalByPrRef(userId: string, prRef: string) {
     if (!Types.ObjectId.isValid(userId)) {
       throw new BadRequestException('Invalid user ID');
     }
-    
+
     const user = await this.userModel.findById(userId).exec();
-    
+
     if (!user) {
       throw new NotFoundException('User not found');
     }
 
     // Create a cryptographic hash of the PR reference for better security and uniqueness
     const hashedPrRef = crypto.createHash('sha256').update(prRef).digest('hex');
-    
+
     const journalId = user.prJournalMap?.get(hashedPrRef);
-    
+
     if (!journalId) {
       return { found: false, journalId: null };
     }
-    
-    return { 
+
+    return {
       found: true,
-      journalId
+      journalId,
     };
   }
 
@@ -114,20 +114,27 @@ export class JournalService {
         importJournalResponse.status === 200 ||
         importJournalResponse.status === 201
       ) {
-        const createdJournalId = importJournalResponse.data.journalId;
-        
+        const createdJournalId = importJournalResponse.data.journalId as string;
+
         // Store the journalId in the user document using prRef as key
         if (user && prRef) {
           // Create a cryptographic hash of the PR reference for better security and uniqueness
-          const hashedPrRef = crypto.createHash('sha256').update(prRef).digest('hex');
+          const hashedPrRef = crypto
+            .createHash('sha256')
+            .update(prRef)
+            .digest('hex');
 
           await this.userModel.findByIdAndUpdate(
             user._id,
-            { $set: { [`prJournalMap.${hashedPrRef}`]: createdJournalId } },
-            { new: true }
+            {
+              $set: {
+                [`prJournalMap.${hashedPrRef}`]: createdJournalId,
+              } as Record<string, unknown>,
+            },
+            { new: true },
           );
         }
-        
+
         return {
           journalId: createdJournalId,
         };

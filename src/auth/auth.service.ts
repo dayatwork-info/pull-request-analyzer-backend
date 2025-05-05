@@ -32,15 +32,16 @@ export class AuthService {
   ) {}
 
   // Helper methods for tokens and password management
-  private async generateTokens(userId: string, email: string) {
+  private generateTokens(userId: string, email: string) {
     const accessTokenPayload = { sub: userId, email };
     const refreshTokenPayload = { sub: userId };
 
     const accessToken = this.jwtService.sign(accessTokenPayload);
 
     // Create refresh token with longer expiry
-    const refreshTokenExpiry =
-      this.configService.get<string>('app.auth.refreshTokenExpiresIn') || '7d';
+    const refreshTokenExpiry = this.configService.get<string>(
+      'app.auth.refreshTokenExpiresIn',
+    );
     const refreshToken = this.jwtService.sign(refreshTokenPayload, {
       secret: this.configService.get<string>('app.auth.refreshTokenSecret'),
       expiresIn: refreshTokenExpiry,
@@ -76,9 +77,10 @@ export class AuthService {
     }
 
     // Set token expiry date
-    const refreshTokenExpiry =
-      this.configService.get<string>('app.auth.refreshTokenExpiresIn') || '7d';
-    const expiryDays = parseInt(refreshTokenExpiry.replace('d', ''), 10) || 7;
+    const refreshTokenExpiry = this.configService.get<string>(
+      'app.auth.refreshTokenExpiresIn',
+    ) as string;
+    const expiryDays = parseInt(refreshTokenExpiry.replace('d', ''), 10);
     const expires = new Date();
     expires.setDate(expires.getDate() + expiryDays);
 
@@ -113,7 +115,7 @@ export class AuthService {
 
       if (passwordIsValid) {
         // Generate JWT tokens
-        const { accessToken, refreshToken } = await this.generateTokens(
+        const { accessToken, refreshToken } = this.generateTokens(
           user._id.toString(),
           user.email,
         );
@@ -163,7 +165,7 @@ export class AuthService {
       }
 
       // Generate tokens
-      const { accessToken, refreshToken } = await this.generateTokens(
+      const { accessToken, refreshToken } = this.generateTokens(
         demoUser._id.toString(),
         demoUser.email,
       );
@@ -221,7 +223,7 @@ export class AuthService {
     await newUser.save();
 
     // Generate JWT tokens
-    const { accessToken, refreshToken } = await this.generateTokens(
+    const { accessToken, refreshToken } = this.generateTokens(
       newUser._id.toString(),
       newUser.email,
     );
@@ -244,16 +246,18 @@ export class AuthService {
     };
   }
 
-
   async refreshToken(refreshTokenDto: RefreshTokenDto, request?: Request) {
     const { refreshToken } = refreshTokenDto;
     const ipAddress = request ? this.getIpFromRequest(request) : 'unknown';
 
     try {
       // Verify the refresh token with the refresh token secret
-      const payload = this.jwtService.verify(refreshToken, {
-        secret: this.configService.get<string>('app.auth.refreshTokenSecret'),
-      });
+      const payload = this.jwtService.verify<{ sub: string; email: string }>(
+        refreshToken,
+        {
+          secret: this.configService.get<string>('app.auth.refreshTokenSecret'),
+        },
+      );
 
       const userId = payload.sub;
 
@@ -280,7 +284,7 @@ export class AuthService {
 
       // Generate new tokens
       const { accessToken, refreshToken: newRefreshToken } =
-        await this.generateTokens(user._id.toString(), user.email);
+        this.generateTokens(user._id.toString(), user.email);
 
       // Revoke the old refresh token
       storedToken.revoked = new Date();

@@ -43,7 +43,7 @@ export class User {
 
   @Prop({ type: [RefreshTokenSchema], default: [] })
   refreshTokens: RefreshToken[];
-  
+
   @Prop({ type: Map, of: String, default: {} })
   prJournalMap: Map<string, string>;
 }

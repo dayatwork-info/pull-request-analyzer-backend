@@ -15,8 +15,8 @@ export class JwtAuthGuard implements CanActivate {
     private configService: ConfigService,
   ) {}
 
-  async canActivate(context: ExecutionContext): Promise<boolean> {
-    const request = context.switchToHttp().getRequest();
+  canActivate(context: ExecutionContext): boolean {
+    const request = context.switchToHttp().getRequest<Request>();
     const token = this.extractTokenFromHeader(request);
 
     if (!token) {
@@ -24,15 +24,19 @@ export class JwtAuthGuard implements CanActivate {
     }
 
     try {
-      const payload = this.jwtService.verify(token, {
-        secret: this.configService.get<string>('app.auth.jwtSecret'),
-      });
+      const payload = this.jwtService.verify<{ sub: string; email: string }>(
+        token,
+        {
+          secret: this.configService.get<string>('app.auth.jwtSecret'),
+        },
+      );
 
       // Add the payload to the request for use in routes
       request['user'] = payload;
 
       return true;
     } catch (error) {
+      console.error('Token error:', error);
       throw new UnauthorizedException('Invalid or expired token');
     }
   }

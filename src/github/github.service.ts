@@ -7,15 +7,19 @@ import {
 import axios from 'axios';
 import { ConfigService } from '@nestjs/config';
 import { RepositoryParamsDto } from './dto/repository-params.dto';
-import {
-  PullRequestContributorsDto,
-  ContributorDto,
-} from './dto/contributor.dto';
+import { PullRequestContributorsDto } from './dto/contributor.dto';
 import { RepositoryContributorsDto } from './dto/repo-contributors.dto';
 import {
-  GithubEmailDto,
-  GithubEmailsResponseDto,
+  GitHubEmailDto,
+  GitHubEmailsResponseDto,
 } from './dto/github-email.dto';
+import {
+  GitHubPullRequestDto,
+  GitHubPullRequestFileDto,
+  GitHubPullRequestDetailDto,
+  GitHubContributorDto,
+  GitHubCommitDto,
+} from './dto/github-pull-request.dto';
 import { AnthropicService } from '../anthropic/anthropic.service';
 
 @Injectable()
@@ -26,9 +30,11 @@ export class GitHubService {
     private configService: ConfigService,
     private anthropicService: AnthropicService,
   ) {
-    this.apiUrl =
-      this.configService.get<string>('app.github.apiUrl') ||
-      'https://api.github.com';
+    this.apiUrl = this.configService.get<string>('app.github.apiUrl') as string;
+
+    if (!this.apiUrl) {
+      throw new Error('GitHub API URL is not set in environment variables');
+    }
   }
 
   private getAuthHeaders(token: string) {
@@ -42,7 +48,7 @@ export class GitHubService {
     };
   }
 
-  private async generateFilesSummary(files: any[]) {
+  private async generateFilesSummary(files: GitHubPullRequestFileDto[]) {
     try {
       if (!files || files.length === 0) {
         return 'No files changed in this pull request.';
@@ -101,10 +107,11 @@ Keep your summary under 150 words and be specific about what was changed.
       return response.data;
     } catch (error) {
       if (error.response) {
-        throw new HttpException(
-          error.response.data.message || 'GitHub API error',
-          error.response.status || HttpStatus.BAD_REQUEST,
-        );
+        const errorMessage =
+          (error.response.data?.message as string) || 'GitHub API error';
+        const statusCode =
+          (error.response.status as number) || HttpStatus.BAD_REQUEST;
+        throw new HttpException(errorMessage, statusCode);
       }
       throw new HttpException(
         'Failed to fetch GitHub user details',
@@ -129,10 +136,11 @@ Keep your summary under 150 words and be specific about what was changed.
       return response.data;
     } catch (error) {
       if (error.response) {
-        throw new HttpException(
-          error.response.data.message || 'GitHub API error',
-          error.response.status || HttpStatus.BAD_REQUEST,
-        );
+        const errorMessage =
+          (error.response.data?.message as string) || 'GitHub API error';
+        const statusCode =
+          (error.response.status as number) || HttpStatus.BAD_REQUEST;
+        throw new HttpException(errorMessage, statusCode);
       }
       throw new HttpException(
         'Failed to fetch GitHub repositories',
@@ -163,10 +171,11 @@ Keep your summary under 150 words and be specific about what was changed.
       return response.data;
     } catch (error) {
       if (error.response) {
-        throw new HttpException(
-          error.response.data.message || 'GitHub API error',
-          error.response.status || HttpStatus.BAD_REQUEST,
-        );
+        const errorMessage =
+          (error.response.data?.message as string) || 'GitHub API error';
+        const statusCode =
+          (error.response.status as number) || HttpStatus.BAD_REQUEST;
+        throw new HttpException(errorMessage, statusCode);
       }
       throw new HttpException(
         'Failed to fetch pull requests',
@@ -179,13 +188,13 @@ Keep your summary under 150 words and be specific about what was changed.
     token: string,
     params: RepositoryParamsDto,
     pullNumber: number,
-  ) {
+  ): Promise<GitHubPullRequestDetailDto> {
     try {
       const headers = this.getAuthHeaders(token);
       const { owner, repo, skipSummary = false } = params;
 
       // Fetch pull request details
-      const prResponse = await axios.get(
+      const prResponse = await axios.get<GitHubPullRequestDto>(
         `${this.apiUrl}/repos/${owner}/${repo}/pulls/${pullNumber}`,
         {
           headers,
@@ -193,7 +202,7 @@ Keep your summary under 150 words and be specific about what was changed.
       );
 
       // Fetch files changed in the pull request
-      const filesResponse = await axios.get(
+      const filesResponse = await axios.get<GitHubPullRequestFileDto[]>(
         `${this.apiUrl}/repos/${owner}/${repo}/pulls/${pullNumber}/files`,
         {
           headers,
@@ -201,7 +210,7 @@ Keep your summary under 150 words and be specific about what was changed.
       );
 
       // Base response with PR and files data
-      const response = {
+      const response: GitHubPullRequestDetailDto = {
         ...prResponse.data,
         files: filesResponse.data,
       };
@@ -217,10 +226,11 @@ Keep your summary under 150 words and be specific about what was changed.
       return response;
     } catch (error) {
       if (error.response) {
-        throw new HttpException(
-          error.response.data.message || 'GitHub API error',
-          error.response.status || HttpStatus.BAD_REQUEST,
-        );
+        const errorMessage =
+          (error.response.data?.message as string) || 'GitHub API error';
+        const statusCode =
+          (error.response.status as number) || HttpStatus.BAD_REQUEST;
+        throw new HttpException(errorMessage, statusCode);
       }
       throw new HttpException(
         'Failed to fetch pull request details',
@@ -238,14 +248,8 @@ Keep your summary under 150 words and be specific about what was changed.
       const headers = this.getAuthHeaders(token);
       const { owner, repo } = params;
 
-      // First, get the PR to verify it exists and get basic PR information
-      const prResponse = await axios.get(
-        `${this.apiUrl}/repos/${owner}/${repo}/pulls/${pullNumber}`,
-        { headers },
-      );
-
       // Get all repository contributors using the dedicated endpoint
-      const contributorsResponse = await axios.get(
+      const contributorsResponse = await axios.get<GitHubContributorDto[]>(
         `${this.apiUrl}/repos/${owner}/${repo}/contributors`,
         {
           headers,
@@ -258,14 +262,14 @@ Keep your summary under 150 words and be specific about what was changed.
       );
 
       // Get PR commits to identify active contributors relevant to this PR
-      const commitsResponse = await axios.get(
+      const commitsResponse = await axios.get<GitHubCommitDto[]>(
         `${this.apiUrl}/repos/${owner}/${repo}/pulls/${pullNumber}/commits`,
         { headers },
       );
 
       // Extract commit authors to identify who's relevant to this PR
       const prAuthorLogins = new Set<string>();
-      commitsResponse.data.forEach((commit) => {
+      commitsResponse.data.forEach((commit: GitHubCommitDto) => {
         if (commit.author && commit.author.login) {
           prAuthorLogins.add(commit.author.login);
         }
@@ -274,9 +278,11 @@ Keep your summary under 150 words and be specific about what was changed.
       // Filter and format contributors relevant to this PR
       const prContributors = contributorsResponse.data
         // Only include contributors who made commits to this PR
-        .filter((contributor) => prAuthorLogins.has(contributor.login))
+        .filter((contributor: GitHubContributorDto) =>
+          prAuthorLogins.has(contributor.login),
+        )
         // Map to our DTO format
-        .map((contributor) => ({
+        .map((contributor: GitHubContributorDto) => ({
           id: contributor.id,
           login: contributor.login,
           avatar_url: contributor.avatar_url,
@@ -287,7 +293,7 @@ Keep your summary under 150 words and be specific about what was changed.
         .sort((a, b) => b.contributions - a.contributions);
 
       // Extract pagination info from headers if available
-      const linkHeader = contributorsResponse.headers.link;
+      const linkHeader = contributorsResponse.headers.link as string;
       let totalContributors: number | undefined = undefined;
 
       // Extract the pagination info
@@ -313,10 +319,11 @@ Keep your summary under 150 words and be specific about what was changed.
       };
     } catch (error) {
       if (error.response) {
-        throw new HttpException(
-          error.response.data.message || 'GitHub API error',
-          error.response.status || HttpStatus.BAD_REQUEST,
-        );
+        const errorMessage =
+          (error.response.data?.message as string) || 'GitHub API error';
+        const statusCode =
+          (error.response.status as number) || HttpStatus.BAD_REQUEST;
+        throw new HttpException(errorMessage, statusCode);
       }
       throw new HttpException(
         'Failed to fetch pull request contributors',
@@ -334,7 +341,7 @@ Keep your summary under 150 words and be specific about what was changed.
       const { owner, repo, page = 1, perPage = 30 } = params;
 
       // Fetch repository contributors directly from GitHub API
-      const contributorsResponse = await axios.get(
+      const contributorsResponse = await axios.get<GitHubContributorDto[]>(
         `${this.apiUrl}/repos/${owner}/${repo}/contributors`,
         {
           headers,
@@ -347,16 +354,18 @@ Keep your summary under 150 words and be specific about what was changed.
       );
 
       // Map the GitHub API response to our DTO format
-      const contributors = contributorsResponse.data.map((contributor) => ({
-        id: contributor.id,
-        login: contributor.login,
-        avatar_url: contributor.avatar_url,
-        html_url: contributor.html_url,
-        contributions: contributor.contributions,
-      }));
+      const contributors = contributorsResponse.data.map(
+        (contributor: GitHubContributorDto) => ({
+          id: contributor.id,
+          login: contributor.login,
+          avatar_url: contributor.avatar_url,
+          html_url: contributor.html_url,
+          contributions: contributor.contributions,
+        }),
+      );
 
       // Extract pagination info from headers if available
-      const linkHeader = contributorsResponse.headers.link;
+      const linkHeader = contributorsResponse.headers.link as string;
       let totalContributors: number | undefined = undefined;
 
       // Extract the pagination info
@@ -380,10 +389,11 @@ Keep your summary under 150 words and be specific about what was changed.
       };
     } catch (error) {
       if (error.response) {
-        throw new HttpException(
-          error.response.data.message || 'GitHub API error',
-          error.response.status || HttpStatus.BAD_REQUEST,
-        );
+        const errorMessage =
+          (error.response.data?.message as string) || 'GitHub API error';
+        const statusCode =
+          (error.response.status as number) || HttpStatus.BAD_REQUEST;
+        throw new HttpException(errorMessage, statusCode);
       }
       throw new HttpException(
         'Failed to fetch repository contributors',
@@ -397,32 +407,31 @@ Keep your summary under 150 words and be specific about what was changed.
    * @param token GitHub access token
    * @returns List of user's email addresses
    */
-  async getUserEmails(token: string): Promise<GithubEmailsResponseDto> {
+  async getUserEmails(token: string): Promise<GitHubEmailsResponseDto> {
     try {
       const headers = this.getAuthHeaders(token);
 
       // Call the GitHub User Emails API endpoint
-      const response = await axios.get(`${this.apiUrl}/user/emails`, {
-        headers,
-      });
+      const response = await axios.get<GitHubEmailDto[]>(
+        `${this.apiUrl}/user/emails`,
+        {
+          headers,
+        },
+      );
 
-      // Map the response to our DTO format
-      const emails: GithubEmailDto[] = response.data.map((email) => ({
-        email: email.email,
-        primary: email.primary,
-        verified: email.verified,
-        visibility: email.visibility,
-      }));
+      // GitHub API returns the array directly, so we wrap it in our response format
+      const emails: GitHubEmailDto[] = response.data;
 
       return {
         emails,
       };
     } catch (error) {
       if (error.response) {
-        throw new HttpException(
-          error.response.data.message || 'GitHub API error',
-          error.response.status || HttpStatus.BAD_REQUEST,
-        );
+        const errorMessage =
+          (error.response.data?.message as string) || 'GitHub API error';
+        const statusCode =
+          (error.response.status as number) || HttpStatus.BAD_REQUEST;
+        throw new HttpException(errorMessage, statusCode);
       }
       throw new HttpException(
         'Failed to fetch GitHub user emails',
