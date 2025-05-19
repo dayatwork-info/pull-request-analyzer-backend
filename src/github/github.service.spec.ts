@@ -1,8 +1,14 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
-import { HttpException, UnauthorizedException } from '@nestjs/common';
+import {
+  HttpException,
+  UnauthorizedException,
+  BadRequestException,
+} from '@nestjs/common';
 import { GitHubService } from './github.service';
 import { AnthropicService } from '../anthropic/anthropic.service';
+import { JournalService } from '../journal/journal.service';
+import { getModelToken } from '@nestjs/mongoose';
 import axios from 'axios';
 import { RepositoryParamsDto } from './dto/repository-params.dto';
 import {
@@ -10,6 +16,10 @@ import {
   GitHubPullRequestFileDto,
   GitHubContributorDto,
 } from './dto/github-pull-request.dto';
+import { PullRequestSummary } from './schemas/pull-request-summary.schema';
+import { User } from '../auth/schemas/user.schema';
+import { GitHubUserDto } from './dto/github-user.dto';
+import { CryptoUtil } from '../auth/utils/crypto.util';
 
 // Mock axios
 jest.mock('axios');
@@ -19,6 +29,9 @@ describe('GitHubService', () => {
   let service: GitHubService;
   let mockConfigService: Partial<ConfigService>;
   let mockAnthropicService: Partial<AnthropicService>;
+  let mockJournalService: any;
+  let mockPullRequestSummaryModel: any;
+  let mockUserModel: any;
   const mockApiUrl = 'https://api.github.com';
   const mockToken = 'test-github-token';
 
@@ -29,13 +42,39 @@ describe('GitHubService', () => {
         if (key === 'app.github.apiUrl') {
           return mockApiUrl;
         }
+        if (key === 'app.auth.encryptionKey') {
+          return 'test-encryption-key';
+        }
         return undefined;
       }),
     };
+    
+    // Set the config service for CryptoUtil
+    CryptoUtil.setConfigService(mockConfigService as ConfigService);
 
     // Mock AnthropicService
     mockAnthropicService = {
       createMessage: jest.fn(),
+    };
+
+    // Mock models and services
+    mockJournalService = {
+      createJournal: jest.fn(),
+      getJournalByPrRef: jest.fn(),
+    };
+
+    mockPullRequestSummaryModel = {
+      find: jest.fn(),
+      findOne: jest.fn(),
+      countDocuments: jest.fn(),
+      create: jest.fn(),
+      deleteOne: jest.fn(),
+    };
+
+    mockUserModel = {
+      findOne: jest.fn(),
+      findById: jest.fn(),
+      findByIdAndUpdate: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -49,12 +88,25 @@ describe('GitHubService', () => {
           provide: AnthropicService,
           useValue: mockAnthropicService,
         },
+        {
+          provide: JournalService,
+          useValue: mockJournalService,
+        },
+        {
+          provide: getModelToken(PullRequestSummary.name),
+          useValue: mockPullRequestSummaryModel,
+        },
+        {
+          provide: getModelToken(User.name),
+          useValue: mockUserModel,
+        },
       ],
     }).compile();
 
     service = module.get<GitHubService>(GitHubService);
 
-    // Reset axios mocks before each test
+    // Reset mocks before each test
+    jest.clearAllMocks();
     mockedAxios.get.mockReset();
   });
 
@@ -68,11 +120,34 @@ describe('GitHubService', () => {
       get: jest.fn().mockReturnValue(undefined),
     };
 
+    // Create mock services and dependencies for constructor
+    const mockJournalService = {
+      createJournal: jest.fn(),
+      getJournalByPrRef: jest.fn(),
+    };
+
+    const mockPullRequestSummaryModel = {
+      find: jest.fn(),
+      findOne: jest.fn(),
+      countDocuments: jest.fn(),
+      create: jest.fn(),
+      deleteOne: jest.fn(),
+    };
+
+    const mockUserModel = {
+      findOne: jest.fn(),
+      findById: jest.fn(),
+      findByIdAndUpdate: jest.fn(),
+    };
+
     // Expect service instantiation to throw an error
     expect(() => {
       new GitHubService(
         localMockConfigService as any,
         mockAnthropicService as any,
+        mockJournalService as any,
+        mockPullRequestSummaryModel as any,
+        mockUserModel as any,
       );
     }).toThrow('GitHub API URL is not set in environment variables');
   });
@@ -612,6 +687,133 @@ describe('GitHubService', () => {
         },
       );
       expect(result).toEqual({ emails: mockEmails });
+    });
+  });
+
+  describe('addPullRequestSummaries', () => {
+    const mockGithubUser = {
+      id: 12345,
+      login: 'testuser',
+      email: 'test@example.com',
+    } as GitHubUserDto;
+
+    const mockPrSummaries = [
+      {
+        _id: 'pr1',
+        organization: 'testorg',
+        repository: 'testrepo',
+        pullRequestNumber: 123,
+        pullRequestTitle: 'Test PR 1',
+        githubUserId: 12345,
+        githubUsername: 'testuser',
+        summary: 'This is a test PR summary',
+      },
+      {
+        _id: 'pr2',
+        organization: 'testorg',
+        repository: 'testrepo',
+        pullRequestNumber: 124,
+        pullRequestTitle: 'Test PR 2',
+        githubUserId: 12345,
+        githubUsername: 'testuser',
+        summary: 'This is another test PR summary',
+      },
+    ];
+
+    const userDetailsDto = {
+      email: 'encrypted-email',
+      password: 'encrypted-password',
+    };
+
+    const mockUser = {
+      _id: 'user1',
+      email: 'test@example.com',
+      github: {
+        id: 12345,
+      },
+    };
+
+    it('should add PR summaries to work journal', async () => {
+      // Setup mocks
+      mockedAxios.get.mockResolvedValueOnce({ data: mockGithubUser });
+      mockPullRequestSummaryModel.find.mockResolvedValueOnce(mockPrSummaries);
+      mockUserModel.findOne.mockImplementation(() => ({
+        exec: jest.fn().mockResolvedValueOnce(mockUser),
+      }));
+      mockJournalService.createJournal.mockResolvedValue({
+        journalId: 'journal1',
+      });
+      mockUserModel.findByIdAndUpdate.mockResolvedValue(mockUser);
+      mockPullRequestSummaryModel.deleteOne.mockResolvedValue({
+        deletedCount: 1,
+      });
+
+      // Mock the CryptoUtil.decrypt
+      const cryptoSpy = jest
+        .spyOn(CryptoUtil, 'decrypt')
+        .mockImplementation(() => 'test@example.com');
+
+      const result = await service.addPullRequestSummaries(
+        mockToken,
+        userDetailsDto,
+      );
+
+      // Verify getUserDetails was called
+      expect(mockedAxios.get).toHaveBeenCalledWith(`${mockApiUrl}/user`, {
+        headers: expect.any(Object),
+      });
+
+      // Verify PR summaries were fetched
+      expect(mockPullRequestSummaryModel.find).toHaveBeenCalledWith({
+        githubUserId: mockGithubUser.id,
+      });
+
+      // Verify user was looked up
+      expect(mockUserModel.findOne).toHaveBeenCalled();
+
+      // Verify journal creation was called for each PR
+      expect(mockJournalService.createJournal).toHaveBeenCalledTimes(2);
+
+      // Verify PR summaries were deleted after journal creation
+      expect(mockPullRequestSummaryModel.deleteOne).toHaveBeenCalledTimes(2);
+
+      // Verify result is empty object
+      expect(result).toEqual({});
+
+      cryptoSpy.mockRestore();
+    });
+
+    it('should throw BadRequestException if no PR summaries found', async () => {
+      mockedAxios.get.mockResolvedValueOnce({ data: mockGithubUser });
+      mockPullRequestSummaryModel.find.mockResolvedValueOnce(null);
+
+      await expect(
+        service.addPullRequestSummaries(mockToken, userDetailsDto),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(mockPullRequestSummaryModel.find).toHaveBeenCalledWith({
+        githubUserId: mockGithubUser.id,
+      });
+    });
+
+    it('should throw BadRequestException if user not found', async () => {
+      mockedAxios.get.mockResolvedValueOnce({ data: mockGithubUser });
+      mockPullRequestSummaryModel.find.mockResolvedValueOnce(mockPrSummaries);
+
+      // Mock the CryptoUtil.decrypt
+      const cryptoSpy = jest
+        .spyOn(CryptoUtil, 'decrypt')
+        .mockImplementation(() => 'test@example.com');
+
+      mockUserModel.findOne.mockImplementation(() => ({
+        exec: jest.fn().mockResolvedValueOnce(null),
+      }));
+
+      await expect(
+        service.addPullRequestSummaries(mockToken, userDetailsDto),
+      ).rejects.toThrow(BadRequestException);
+
+      cryptoSpy.mockRestore();
     });
   });
 });

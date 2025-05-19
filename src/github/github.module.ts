@@ -10,7 +10,7 @@ import {
   PullRequestSummary,
   PullRequestSummarySchema,
 } from './schemas/pull-request-summary.schema';
-import { User, UserSchema } from 'src/auth/schemas/user.schema';
+import { User, UserSchema } from '../auth/schemas/user.schema';
 
 @Module({
   imports: [

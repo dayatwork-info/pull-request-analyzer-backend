@@ -3,7 +3,7 @@ import { INestApplication, ValidationPipe } from '@nestjs/common';
 import * as request from 'supertest';
 import { MongooseModule } from '@nestjs/mongoose';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { JwtModule } from '@nestjs/jwt';
+import { JwtModule, JwtService } from '@nestjs/jwt';
 import { AuthModule } from '../src/auth/auth.module';
 import { AuthService } from '../src/auth/auth.service';
 import { LoginDto } from '../src/auth/dto/login.dto';
@@ -22,6 +22,8 @@ describe('AuthController (e2e)', () => {
   let jwtSecret: string;
   let refreshTokenSecret: string;
   let encryptionKey: string;
+  let jwtService: JwtService;
+  let authToken: string;
 
   // Mock data
   const testUser = {
@@ -97,6 +99,9 @@ describe('AuthController (e2e)', () => {
 
     // Manually set the config service for CryptoUtil
     CryptoUtil.setConfigService(module.get<ConfigService>(ConfigService));
+
+    jwtService = module.get<JwtService>(JwtService);
+    authToken = jwtService.sign({ sub: mockUser._id, email: mockUser.email });
 
     await app.init();
   });
@@ -307,6 +312,7 @@ describe('AuthController (e2e)', () => {
       };
 
       const response = await request(app.getHttpServer())
+        .set('Authorization', `Bearer ${authToken}`)
         .post('/api/auth/decrypt-credentials')
         .send(decryptDto)
         .expect(201);

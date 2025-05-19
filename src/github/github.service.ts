@@ -38,9 +38,9 @@ import {
 import { AnthropicService } from '../anthropic/anthropic.service';
 import { JournalService } from '../journal/journal.service';
 import { CreateJournalDto } from '../journal/dto/create-journal.dto';
-import { User, UserDocument } from 'src/auth/schemas/user.schema';
+import { User, UserDocument } from '../auth/schemas/user.schema';
 import * as crypto from 'crypto';
-import { CryptoUtil } from 'src/auth/utils/crypto.util';
+import { CryptoUtil } from '../auth/utils/crypto.util';
 
 @Injectable()
 export class GitHubService {
@@ -694,7 +694,7 @@ Keep your summary under 150 words and be specific about what was changed.
   ): Promise<PullRequestSummariesResponseDto> {
     try {
       // Get GitHub user details from token
-      const userDetails = await this.getUserDetails(token);
+      const userDetails = (await this.getUserDetails(token)) as GitHubUserDto;
 
       // Get the user ID from the response
       const githubUserId = userDetails.id;
@@ -729,9 +729,10 @@ Keep your summary under 150 words and be specific about what was changed.
   ) {
     try {
       // Get GitHub user details from token
-      const githubUserDetails = await this.getUserDetails(token);
+      const githubUserDetails = (await this.getUserDetails(
+        token,
+      )) as GitHubUserDto;
       const githubUserId = githubUserDetails.id;
-      const githubUsername = githubUserDetails.login;
 
       // Get pull request summaries from the model
       const prSummaries = await this.pullRequestSummaryModel.find({

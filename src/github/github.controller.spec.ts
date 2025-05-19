@@ -23,7 +23,7 @@ describe('GitHubController', () => {
       getPullRequestContributors: jest.fn(),
       getRepositoryContributors: jest.fn(),
       hasUserPullRequestSummaries: jest.fn(),
-      createPullRequestSummary: jest.fn(),
+      addPullRequestSummaries: jest.fn(),
       fetchAndSummarizePullRequests: jest.fn(),
     };
 
@@ -284,28 +284,24 @@ describe('GitHubController', () => {
     });
   });
 
-  describe('createPullRequestSummary', () => {
+  describe('addPullRequestSummaries', () => {
     it('should call service method with token and request dto', async () => {
       const requestDto = {
         email: 'encrypted-email',
         password: 'encrypted-password',
       };
-      const mockResponse = {
-        success: true,
-        journalId: 'journal-123',
-        message: 'Successfully created journal entry from pull request summary',
-      };
+      const mockResponse = {};
 
       (
-        mockGitHubService.createPullRequestSummary as jest.Mock
+        mockGitHubService.addPullRequestSummaries as jest.Mock
       ).mockResolvedValueOnce(mockResponse);
 
-      const result = await controller.createPullRequestSummary(
+      const result = await controller.addPullRequestSummaries(
         mockGithubToken,
         requestDto,
       );
 
-      expect(mockGitHubService.createPullRequestSummary).toHaveBeenCalledWith(
+      expect(mockGitHubService.addPullRequestSummaries).toHaveBeenCalledWith(
         mockGithubToken,
         requestDto,
       );
