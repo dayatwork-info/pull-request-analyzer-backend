@@ -126,8 +126,12 @@ describe('GitHubController (e2e)', () => {
       getUserEmails: jest.fn().mockResolvedValue(mockEmailsResponse),
       getRepositories: jest.fn().mockResolvedValue(mockRepositoriesResponse),
       getPullRequests: jest.fn().mockResolvedValue(mockPullRequestsResponse),
-      getPullRequestDetails: jest.fn().mockResolvedValue(mockPullRequestDetailsResponse),
-      getRepositoryContributors: jest.fn().mockResolvedValue(mockContributorsResponse),
+      getPullRequestDetails: jest
+        .fn()
+        .mockResolvedValue(mockPullRequestDetailsResponse),
+      getRepositoryContributors: jest
+        .fn()
+        .mockResolvedValue(mockContributorsResponse),
       getPullRequestContributors: jest.fn().mockResolvedValue({
         ...mockContributorsResponse,
         pull_number: 1,
@@ -189,10 +193,10 @@ describe('GitHubController (e2e)', () => {
     app = module.createNestApplication();
     app.useGlobalPipes(new ValidationPipe());
     app.setGlobalPrefix('api');
-    
+
     jwtService = module.get<JwtService>(JwtService);
     authToken = jwtService.sign({ sub: mockUser._id, email: mockUser.email });
-    
+
     await app.init();
   });
 
@@ -214,11 +218,13 @@ describe('GitHubController (e2e)', () => {
     });
 
     it('should fail when GitHub token is missing', () => {
-      return request(app.getHttpServer())
-        .get('/api/github/user')
-        .set('Authorization', `Bearer ${authToken}`)
-        // No GitHub token
-        .expect(500); // The mock throws a generic Error which results in 500
+      return (
+        request(app.getHttpServer())
+          .get('/api/github/user')
+          .set('Authorization', `Bearer ${authToken}`)
+          // No GitHub token
+          .expect(500)
+      ); // The mock throws a generic Error which results in 500
     });
   });
 

@@ -4,6 +4,8 @@ import {
   BadRequestException,
   InternalServerErrorException,
   NotFoundException,
+  Inject,
+  forwardRef,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
@@ -19,6 +21,7 @@ import * as crypto from 'crypto';
 export class JournalService {
   constructor(
     @InjectModel(User.name) private userModel: Model<UserDocument>,
+    @Inject(forwardRef(() => GitHubService))
     private readonly githubService: GitHubService,
     private readonly configService: ConfigService,
   ) {}

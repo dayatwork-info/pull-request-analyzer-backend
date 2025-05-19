@@ -82,22 +82,22 @@ describe('AuthController (e2e)', () => {
       .compile();
 
     app = module.createNestApplication();
-    
+
     // Apply validation pipe for DTO validation
     app.useGlobalPipes(new ValidationPipe());
-    
+
     // Set global API prefix to match the application setup
     app.setGlobalPrefix('api');
-    
+
     // Initialize the CryptoUtil
     authService = module.get<AuthService>(AuthService);
     jwtSecret = mockConfigValues['app.auth.jwtSecret'];
     refreshTokenSecret = mockConfigValues['app.auth.refreshTokenSecret'];
     encryptionKey = mockConfigValues['app.auth.encryptionKey'];
-    
+
     // Manually set the config service for CryptoUtil
     CryptoUtil.setConfigService(module.get<ConfigService>(ConfigService));
-    
+
     await app.init();
   });
 

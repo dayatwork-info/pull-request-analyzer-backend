@@ -1,10 +1,11 @@
-import { Body, Controller, Post, Req } from '@nestjs/common';
+import { Body, Controller, Post, Req, UseGuards } from '@nestjs/common';
 import { Request } from 'express';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { SignupDto } from './dto/signup.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { DecryptCredentialsDto } from './dto/decrypt-credentials.dto';
+import { JwtAuthGuard } from './guards/jwt-auth.guard';
 
 @Controller('auth')
 export class AuthController {
@@ -29,6 +30,7 @@ export class AuthController {
   }
 
   @Post('decrypt-credentials')
+  @UseGuards(JwtAuthGuard)
   decryptCredentials(@Body() decryptCredentialsDto: DecryptCredentialsDto) {
     return this.authService.decryptCredentials(decryptCredentialsDto);
   }

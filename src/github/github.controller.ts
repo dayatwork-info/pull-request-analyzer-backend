@@ -1,13 +1,19 @@
 import {
   Controller,
   Get,
+  Post,
   Headers,
   Query,
   Param,
   UseGuards,
+  Body,
 } from '@nestjs/common';
 import { GitHubService } from './github.service';
 import { RepositoryParamsDto } from './dto/repository-params.dto';
+import {
+  OrganizationRepoDto,
+  PullRequestSummaryRequestDto,
+} from './dto/pull-request-summary.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 @Controller('github')
@@ -115,6 +121,52 @@ export class GitHubController {
     return this.gitHubService.getRepositoryContributors(
       customGithubToken,
       params,
+    );
+  }
+
+  /**
+   * Fetch, summarize, and store all pull requests for a specific organization and repository
+   * using path parameters
+   */
+  @Post('repos/:org/:repo/pr-summaries')
+  async fetchAndSummarizePullRequests(
+    @Headers('X-GitHub-Token') customGithubToken: string,
+    @Param('org') organization: string,
+    @Param('repo') repository: string,
+    @Body() requestDto: PullRequestSummaryRequestDto,
+  ) {
+    const params: OrganizationRepoDto = {
+      organization,
+      repository,
+    };
+    return this.gitHubService.fetchAndSummarizePullRequests(
+      customGithubToken,
+      params,
+      requestDto,
+    );
+  }
+
+  /**
+   * Get pull request summaries for the authenticated GitHub user
+   */
+  @Get('user/pr-summaries')
+  async hasUserPullRequestSummaries(
+    @Headers('X-GitHub-Token') customGithubToken: string,
+  ) {
+    return this.gitHubService.hasUserPullRequestSummaries(customGithubToken);
+  }
+
+  /**
+   * Create a pull request summary and add it to the work journal
+   */
+  @Post('user/pr-summaries')
+  async addPullRequestSummaries(
+    @Headers('X-GitHub-Token') customGithubToken: string,
+    @Body() requestDto: PullRequestSummaryRequestDto,
+  ) {
+    return this.gitHubService.addPullRequestSummaries(
+      customGithubToken,
+      requestDto,
     );
   }
 }
