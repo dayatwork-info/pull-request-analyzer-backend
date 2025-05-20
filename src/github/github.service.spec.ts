@@ -48,7 +48,7 @@ describe('GitHubService', () => {
         return undefined;
       }),
     };
-    
+
     // Set the config service for CryptoUtil
     CryptoUtil.setConfigService(mockConfigService as ConfigService);
 

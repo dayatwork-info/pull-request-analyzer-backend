@@ -27,6 +27,7 @@ describe('AuthController (e2e)', () => {
 
   // Mock data
   const testUser = {
+    _id: '507f1f77bcf86cd799439011',
     email: 'test@example.com',
     password: 'password123',
   };
@@ -101,7 +102,7 @@ describe('AuthController (e2e)', () => {
     CryptoUtil.setConfigService(module.get<ConfigService>(ConfigService));
 
     jwtService = module.get<JwtService>(JwtService);
-    authToken = jwtService.sign({ sub: mockUser._id, email: mockUser.email });
+    authToken = jwtService.sign({ sub: testUser._id, email: testUser.email });
 
     await app.init();
   });
@@ -312,8 +313,8 @@ describe('AuthController (e2e)', () => {
       };
 
       const response = await request(app.getHttpServer())
-        .set('Authorization', `Bearer ${authToken}`)
         .post('/api/auth/decrypt-credentials')
+        .set('Authorization', `Bearer ${authToken}`)
         .send(decryptDto)
         .expect(201);
 
@@ -328,6 +329,7 @@ describe('AuthController (e2e)', () => {
 
       await request(app.getHttpServer())
         .post('/api/auth/decrypt-credentials')
+        .set('Authorization', `Bearer ${authToken}`)
         .send(invalidDto)
         .expect(400); // Bad Request
     });
@@ -340,6 +342,7 @@ describe('AuthController (e2e)', () => {
 
       await request(app.getHttpServer())
         .post('/api/auth/decrypt-credentials')
+        .set('Authorization', `Bearer ${authToken}`)
         .send(invalidDto)
         .expect((res) => {
           // Accept either 400 or 500 status code, as the implementation might throw

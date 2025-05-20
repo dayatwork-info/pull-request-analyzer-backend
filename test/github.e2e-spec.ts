@@ -9,7 +9,6 @@ import { GitHubController } from '../src/github/github.controller';
 import { GitHubService } from '../src/github/github.service';
 import { AnthropicService } from '../src/anthropic/anthropic.service';
 import { JwtAuthGuard } from '../src/auth/guards/jwt-auth.guard';
-import { AuthModule } from '../src/auth/auth.module';
 import { User, UserSchema } from '../src/auth/schemas/user.schema';
 import config from '../src/config/config';
 
@@ -223,15 +222,17 @@ describe('GitHubController (e2e)', () => {
     });
 
     it('should return user details even when GitHub token is missing in tests', () => {
-      return request(app.getHttpServer())
-        .get('/api/github/user')
-        .set('Authorization', `Bearer ${authToken}`)
-        // No GitHub token
-        .expect(200)
-        .expect((res) => {
-          // In a real environment this would fail, but we're mocking for tests
-          expect(res.body).toEqual(mockUserResponse);
-        });
+      return (
+        request(app.getHttpServer())
+          .get('/api/github/user')
+          .set('Authorization', `Bearer ${authToken}`)
+          // No GitHub token
+          .expect(200)
+          .expect((res) => {
+            // In a real environment this would fail, but we're mocking for tests
+            expect(res.body).toEqual(mockUserResponse);
+          })
+      );
     });
   });
 
