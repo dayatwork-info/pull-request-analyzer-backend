@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { JournalController } from './journal.controller';
 import { JournalService } from './journal.service';
@@ -10,7 +10,7 @@ import { JwtModule } from '@nestjs/jwt';
 @Module({
   imports: [
     MongooseModule.forFeature([{ name: User.name, schema: UserSchema }]),
-    GitHubModule,
+    forwardRef(() => GitHubModule),
     ConfigModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],

@@ -9,8 +9,8 @@ import {
 } from '@nestjs/common';
 import { JournalService } from './journal.service';
 import { CreateJournalDto } from './dto/create-journal.dto';
-import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
-import { CurrentUser } from 'src/auth/decorators/current-user.decorator';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
 @Controller('journal')
 @UseGuards(JwtAuthGuard)

@@ -3,9 +3,8 @@ import { INestApplication, ValidationPipe } from '@nestjs/common';
 import * as request from 'supertest';
 import { MongooseModule } from '@nestjs/mongoose';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { JwtModule } from '@nestjs/jwt';
+import { JwtModule, JwtService } from '@nestjs/jwt';
 import { AuthModule } from '../src/auth/auth.module';
-import { AuthService } from '../src/auth/auth.service';
 import { LoginDto } from '../src/auth/dto/login.dto';
 import { SignupDto } from '../src/auth/dto/signup.dto';
 import { RefreshTokenDto } from '../src/auth/dto/refresh-token.dto';
@@ -14,17 +13,19 @@ import { User, UserSchema } from '../src/auth/schemas/user.schema';
 import config from '../src/config/config';
 import { CryptoUtil } from '../src/auth/utils/crypto.util';
 import { MongoMemoryServer } from 'mongodb-memory-server';
+import { Server } from 'http';
 
 describe('AuthController (e2e)', () => {
   let app: INestApplication;
+
+  // Define App type for supertest
   let mongod: MongoMemoryServer;
-  let authService: AuthService;
-  let jwtSecret: string;
-  let refreshTokenSecret: string;
-  let encryptionKey: string;
+  let jwtService: JwtService;
+  let authToken: string;
 
   // Mock data
   const testUser = {
+    _id: '507f1f77bcf86cd799439011',
     email: 'test@example.com',
     password: 'password123',
   };
@@ -82,22 +83,19 @@ describe('AuthController (e2e)', () => {
       .compile();
 
     app = module.createNestApplication();
-    
+
     // Apply validation pipe for DTO validation
     app.useGlobalPipes(new ValidationPipe());
-    
+
     // Set global API prefix to match the application setup
     app.setGlobalPrefix('api');
-    
-    // Initialize the CryptoUtil
-    authService = module.get<AuthService>(AuthService);
-    jwtSecret = mockConfigValues['app.auth.jwtSecret'];
-    refreshTokenSecret = mockConfigValues['app.auth.refreshTokenSecret'];
-    encryptionKey = mockConfigValues['app.auth.encryptionKey'];
-    
+
     // Manually set the config service for CryptoUtil
     CryptoUtil.setConfigService(module.get<ConfigService>(ConfigService));
-    
+
+    jwtService = module.get<JwtService>(JwtService);
+    authToken = jwtService.sign({ sub: testUser._id, email: testUser.email });
+
     await app.init();
   });
 
@@ -113,7 +111,7 @@ describe('AuthController (e2e)', () => {
         password: testUser.password,
       };
 
-      const response = await request(app.getHttpServer())
+      const response = await request(app.getHttpServer() as Server)
         .post('/api/auth/signup')
         .send(signupDto)
         .expect(201);
@@ -132,7 +130,7 @@ describe('AuthController (e2e)', () => {
         password: testUser.password,
       };
 
-      await request(app.getHttpServer())
+      await request(app.getHttpServer() as Server)
         .post('/api/auth/signup')
         .send(signupDto)
         .expect(409); // Conflict status code
@@ -144,7 +142,7 @@ describe('AuthController (e2e)', () => {
         password: testUser.password,
       };
 
-      await request(app.getHttpServer())
+      await request(app.getHttpServer() as Server)
         .post('/api/auth/signup')
         .send(invalidDto)
         .expect(400); // Bad Request for validation error
@@ -156,7 +154,7 @@ describe('AuthController (e2e)', () => {
         password: '12345', // Too short, should be at least 6 characters
       };
 
-      await request(app.getHttpServer())
+      await request(app.getHttpServer() as Server)
         .post('/api/auth/signup')
         .send(invalidDto)
         .expect(400); // Bad Request for validation error
@@ -170,7 +168,7 @@ describe('AuthController (e2e)', () => {
         password: testUser.password,
       };
 
-      const response = await request(app.getHttpServer())
+      const response = await request(app.getHttpServer() as Server)
         .post('/api/auth/login')
         .send(loginDto)
         .expect(201);
@@ -189,7 +187,7 @@ describe('AuthController (e2e)', () => {
         password: 'demo-password-123',
       };
 
-      const response = await request(app.getHttpServer())
+      const response = await request(app.getHttpServer() as Server)
         .post('/api/auth/login')
         .send(demoLoginDto)
         .expect(201);
@@ -205,7 +203,7 @@ describe('AuthController (e2e)', () => {
         password: 'wrong-password',
       };
 
-      await request(app.getHttpServer())
+      await request(app.getHttpServer() as Server)
         .post('/api/auth/login')
         .send(invalidLoginDto)
         .expect(401); // Unauthorized
@@ -217,7 +215,7 @@ describe('AuthController (e2e)', () => {
         password: '12345', // Too short
       };
 
-      await request(app.getHttpServer())
+      await request(app.getHttpServer() as Server)
         .post('/api/auth/login')
         .send(invalidDto)
         .expect(400); // Bad Request
@@ -234,11 +232,11 @@ describe('AuthController (e2e)', () => {
         password: testUser.password,
       };
 
-      const response = await request(app.getHttpServer())
+      const response = await request(app.getHttpServer() as Server)
         .post('/api/auth/login')
         .send(loginDto);
 
-      refreshToken = response.body.refreshToken;
+      refreshToken = response.body.refreshToken as string;
     });
 
     it('should refresh tokens with a valid refresh token', async () => {
@@ -246,7 +244,7 @@ describe('AuthController (e2e)', () => {
         refreshToken,
       };
 
-      const response = await request(app.getHttpServer())
+      const response = await request(app.getHttpServer() as Server)
         .post('/api/auth/refresh-token')
         .send(refreshTokenDto)
         .expect(201);
@@ -263,7 +261,7 @@ describe('AuthController (e2e)', () => {
         refreshToken: 'invalid-token',
       };
 
-      await request(app.getHttpServer())
+      await request(app.getHttpServer() as Server)
         .post('/api/auth/refresh-token')
         .send(invalidTokenDto)
         .expect(401); // Unauthorized
@@ -274,7 +272,7 @@ describe('AuthController (e2e)', () => {
         // Missing refreshToken
       };
 
-      await request(app.getHttpServer())
+      await request(app.getHttpServer() as Server)
         .post('/api/auth/refresh-token')
         .send(invalidDto)
         .expect(400); // Bad Request
@@ -292,12 +290,12 @@ describe('AuthController (e2e)', () => {
         password: testUser.password,
       };
 
-      const response = await request(app.getHttpServer())
+      const response = await request(app.getHttpServer() as Server)
         .post('/api/auth/login')
         .send(loginDto);
 
-      encryptedEmail = response.body.encryptedCredentials.email;
-      encryptedPassword = response.body.encryptedCredentials.password;
+      encryptedEmail = response.body.encryptedCredentials.email as string;
+      encryptedPassword = response.body.encryptedCredentials.password as string;
     });
 
     it('should decrypt credentials successfully', async () => {
@@ -306,8 +304,9 @@ describe('AuthController (e2e)', () => {
         encryptedPassword,
       };
 
-      const response = await request(app.getHttpServer())
+      const response = await request(app.getHttpServer() as Server)
         .post('/api/auth/decrypt-credentials')
+        .set('Authorization', `Bearer ${authToken}`)
         .send(decryptDto)
         .expect(201);
 
@@ -320,8 +319,9 @@ describe('AuthController (e2e)', () => {
         // Missing encryptedEmail and encryptedPassword
       };
 
-      await request(app.getHttpServer())
+      await request(app.getHttpServer() as Server)
         .post('/api/auth/decrypt-credentials')
+        .set('Authorization', `Bearer ${authToken}`)
         .send(invalidDto)
         .expect(400); // Bad Request
     });
@@ -332,8 +332,9 @@ describe('AuthController (e2e)', () => {
         encryptedPassword: 'invalid-encrypted-data',
       };
 
-      await request(app.getHttpServer())
+      await request(app.getHttpServer() as Server)
         .post('/api/auth/decrypt-credentials')
+        .set('Authorization', `Bearer ${authToken}`)
         .send(invalidDto)
         .expect((res) => {
           // Accept either 400 or 500 status code, as the implementation might throw

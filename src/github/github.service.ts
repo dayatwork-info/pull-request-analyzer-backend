@@ -3,9 +3,14 @@ import {
   HttpException,
   HttpStatus,
   UnauthorizedException,
+  Inject,
+  forwardRef,
+  BadRequestException,
 } from '@nestjs/common';
 import axios from 'axios';
 import { ConfigService } from '@nestjs/config';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
 import { RepositoryParamsDto } from './dto/repository-params.dto';
 import { PullRequestContributorsDto } from './dto/contributor.dto';
 import { RepositoryContributorsDto } from './dto/repo-contributors.dto';
@@ -13,6 +18,7 @@ import {
   GitHubEmailDto,
   GitHubEmailsResponseDto,
 } from './dto/github-email.dto';
+import { GitHubUserDto } from './dto/github-user.dto';
 import {
   GitHubPullRequestDto,
   GitHubPullRequestFileDto,
@@ -20,7 +26,21 @@ import {
   GitHubContributorDto,
   GitHubCommitDto,
 } from './dto/github-pull-request.dto';
+import {
+  OrganizationRepoDto,
+  PullRequestSummariesResponseDto,
+  PullRequestSummaryRequestDto,
+} from './dto/pull-request-summary.dto';
+import {
+  PullRequestSummary,
+  PullRequestSummaryDocument,
+} from './schemas/pull-request-summary.schema';
 import { AnthropicService } from '../anthropic/anthropic.service';
+import { JournalService } from '../journal/journal.service';
+import { CreateJournalDto } from '../journal/dto/create-journal.dto';
+import { User, UserDocument } from '../auth/schemas/user.schema';
+import * as crypto from 'crypto';
+import { CryptoUtil } from '../auth/utils/crypto.util';
 
 @Injectable()
 export class GitHubService {
@@ -29,6 +49,11 @@ export class GitHubService {
   constructor(
     private configService: ConfigService,
     private anthropicService: AnthropicService,
+    @Inject(forwardRef(() => JournalService))
+    private journalService: JournalService,
+    @InjectModel(PullRequestSummary.name)
+    private pullRequestSummaryModel: Model<PullRequestSummaryDocument>,
+    @InjectModel(User.name) private userModel: Model<UserDocument>,
   ) {
     this.apiUrl = this.configService.get<string>('app.github.apiUrl') as string;
 
@@ -61,7 +86,7 @@ export class GitHubService {
         additions: file.additions,
         deletions: file.deletions,
         changes: file.changes,
-        patch: file.patch?.substring(0, 500), // Limit patch size to avoid token limits
+        patch: file.patch,
       }));
 
       const prompt = `
@@ -435,6 +460,353 @@ Keep your summary under 150 words and be specific about what was changed.
       }
       throw new HttpException(
         'Failed to fetch GitHub user emails',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
+   * Fetch all pull requests for a specific organization and repository,
+   * generate summaries for each, and store them in the database
+   * @param token GitHub access token
+   * @param params Organization and repository parameters
+   * @param email Optional encrypted email for journal creation
+   * @param password Optional encrypted password for journal creation
+   * @returns Number of pull requests processed
+   */
+  async fetchAndSummarizePullRequests(
+    token: string,
+    params: OrganizationRepoDto,
+    userDetails: PullRequestSummaryRequestDto,
+  ): Promise<{
+    processed: number;
+    updated: number;
+    skipped: number;
+    journals: number;
+  }> {
+    try {
+      const headers = this.getAuthHeaders(token);
+      const { organization, repository } = params;
+
+      const decryptedEmail = CryptoUtil.decrypt(userDetails.email);
+
+      const user = await this.userModel
+        .findOne({ email: decryptedEmail })
+        .exec();
+
+      if (!user) {
+        throw new BadRequestException('Unable to find user');
+      }
+
+      let page = 1;
+      const perPage = 30;
+      let totalProcessed = 0;
+      const totalUpdated = 0;
+      const totalSkipped = 0;
+      let totalJournals = 0;
+      let hasMorePullRequests = true;
+
+      // Get info about the current authenticated user
+      const userResponse = await axios.get<GitHubUserDto>(
+        `${this.apiUrl}/user`,
+        {
+          headers,
+        },
+      );
+      const currentUser = userResponse.data;
+
+      // Get user's email for creating journals
+      const emailsResponse = await this.getUserEmails(token);
+
+      const verifiedGithubEmails = emailsResponse.emails.filter(
+        (e) => e.verified,
+      );
+      const isEmailVerifiedOnGithub = verifiedGithubEmails.some(
+        (e) => e.email.toLowerCase() === decryptedEmail.toLowerCase(),
+      );
+
+      if (!isEmailVerifiedOnGithub) {
+        throw new BadRequestException(
+          'Email is not verified on GitHub. Please use a verified GitHub email.',
+        );
+      }
+
+      while (hasMorePullRequests) {
+        // Fetch a page of pull requests
+        const prResponse = await axios.get<GitHubPullRequestDto[]>(
+          `${this.apiUrl}/repos/${organization}/${repository}/pulls`,
+          {
+            headers,
+            params: {
+              state: 'all', // Get all pull requests (open, closed, merged)
+              page,
+              per_page: perPage,
+              sort: 'created',
+              direction: 'desc',
+            },
+          },
+        );
+
+        const pullRequests = prResponse.data;
+
+        // If we got fewer PRs than the page size, this is the last page
+        if (pullRequests.length < perPage) {
+          hasMorePullRequests = false;
+        }
+
+        // Process each pull request
+        for (const pr of pullRequests) {
+          // Format the PR reference for storage
+          const prRef = `${organization}_${repository}_${pr.number}`;
+
+          const { found } = await this.journalService.getJournalByPrRef(
+            user._id.toString(),
+            prRef,
+          );
+          if (found) {
+            continue;
+          }
+
+          const existingPrOfUser = await this.pullRequestSummaryModel.findOne({
+            githubUserId: currentUser.id,
+            organization,
+            repository,
+            pullRequestNumber: pr.number,
+          });
+
+          try {
+            let savedPrId: string;
+            let prSummary: string;
+
+            if (existingPrOfUser) {
+              savedPrId = existingPrOfUser._id.toString();
+              prSummary = existingPrOfUser.summary;
+            } else {
+              // Fetch PR file changes
+              const filesResponse = await axios.get<GitHubPullRequestFileDto[]>(
+                `${this.apiUrl}/repos/${organization}/${repository}/pulls/${pr.number}/files`,
+                { headers },
+              );
+
+              const files = filesResponse.data;
+
+              // Generate summary using Anthropic
+              const summary = await this.generateFilesSummary(files);
+
+              // Create or update the pull request summary in the database
+              const prSummaryData = {
+                organization,
+                repository,
+                pullRequestNumber: pr.number,
+                pullRequestTitle: pr.title,
+                githubUserId: pr.user.id,
+                githubUsername: pr.user.login,
+                pullRequestSummary: summary,
+                updatedAt: pr.updated_at,
+              };
+
+              prSummary = summary;
+
+              // Create new record
+              const newPr =
+                await this.pullRequestSummaryModel.create(prSummaryData);
+              savedPrId = newPr._id.toString();
+              totalProcessed++;
+            }
+            // If this PR was created by the current authenticated user, create a journal entry
+            if (currentUser.id === pr.user.id) {
+              try {
+                // Create a journal entry
+                const journalDto: CreateJournalDto = {
+                  email: userDetails.email,
+                  password: userDetails.password,
+                  title: pr.title,
+                  content: prSummary,
+                  prRef: prRef,
+                };
+
+                const { journalId: createdJournalId } =
+                  await this.journalService.createJournal(journalDto, token);
+
+                const hashedPrRef = crypto
+                  .createHash('sha256')
+                  .update(prRef)
+                  .digest('hex');
+
+                await this.userModel.findByIdAndUpdate(
+                  user._id,
+                  {
+                    $set: {
+                      [`prJournalMap.${hashedPrRef}`]: createdJournalId,
+                    } as Record<string, unknown>,
+                  },
+                  { new: true },
+                );
+                totalJournals++;
+                await this.pullRequestSummaryModel.deleteOne({
+                  _id: savedPrId,
+                });
+              } catch (journalError) {
+                console.error(
+                  `Error creating journal for PR #${pr.number}:`,
+                  journalError.message || journalError,
+                );
+                // Continue processing PRs even if journal creation fails
+              }
+            }
+          } catch (prError) {
+            console.error(`Error processing PR #${pr.number}:`, prError);
+            // Continue with the next PR even if one fails
+          }
+        }
+
+        page++;
+      }
+
+      return {
+        processed: totalProcessed,
+        updated: totalUpdated,
+        skipped: totalSkipped,
+        journals: totalJournals,
+      };
+    } catch (error) {
+      if (error.response) {
+        const errorMessage =
+          (error.response.message as string) || 'GitHub API error';
+        const statusCode =
+          (error.response.status as number) || HttpStatus.BAD_REQUEST;
+        throw new HttpException(errorMessage, statusCode);
+      }
+      throw new HttpException(
+        'Failed to fetch and summarize pull requests',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
+   * Has pull request summaries for a specific GitHub user
+   * @param githubUserId GitHub user ID
+   * @returns Pull request summaries status
+   */
+  async hasUserPullRequestSummaries(
+    token: string,
+  ): Promise<PullRequestSummariesResponseDto> {
+    try {
+      // Get GitHub user details from token
+      const userDetails = (await this.getUserDetails(token)) as GitHubUserDto;
+
+      // Get the user ID from the response
+      const githubUserId = userDetails.id;
+
+      // Count total matching documents for pagination
+      const totalCount = await this.pullRequestSummaryModel.countDocuments({
+        githubUserId,
+      });
+
+      return {
+        summaries: totalCount,
+        found: totalCount > 0,
+      };
+    } catch (error) {
+      console.error('error checking pull request summaries', error);
+      throw new HttpException(
+        'Failed to fetch user pull request summaries',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
+   * Create a pull request summary and add it to the work journal
+   * @param token GitHub token
+   * @param userDetails The data needed to create the pull request summary
+   * @returns Result of the operation
+   */
+  async addPullRequestSummaries(
+    token: string,
+    userDetails: PullRequestSummaryRequestDto,
+  ) {
+    try {
+      // Get GitHub user details from token
+      const githubUserDetails = (await this.getUserDetails(
+        token,
+      )) as GitHubUserDto;
+      const githubUserId = githubUserDetails.id;
+
+      // Get pull request summaries from the model
+      const prSummaries = await this.pullRequestSummaryModel.find({
+        githubUserId,
+      });
+
+      if (!prSummaries) {
+        throw new BadRequestException('No pull request summary found for user');
+      }
+
+      const decryptedEmail = CryptoUtil.decrypt(userDetails.email);
+
+      const user = await this.userModel
+        .findOne({ email: decryptedEmail })
+        .exec();
+
+      if (!user) {
+        throw new BadRequestException('Unable to find user');
+      }
+
+      // Create a journal entry using the journal service
+      for (const prSummary of prSummaries) {
+        try {
+          // Construct the PR reference
+          const prRef = `${prSummary.organization}_${prSummary.repository}_${prSummary.pullRequestNumber}`;
+
+          // Create a journal entry
+          const journalDto: CreateJournalDto = {
+            email: userDetails.email,
+            password: userDetails.password,
+            title: prSummary.pullRequestTitle,
+            content: prSummary.summary,
+            prRef: prRef,
+          };
+
+          const { journalId: createdJournalId } =
+            await this.journalService.createJournal(journalDto, token);
+
+          // Create a hash of the PR reference for storage
+          const hashedPrRef = crypto
+            .createHash('sha256')
+            .update(prRef)
+            .digest('hex');
+
+          // Update the user's PR journal map
+          await this.userModel.findByIdAndUpdate(
+            user._id,
+            {
+              $set: {
+                [`prJournalMap.${hashedPrRef}`]: createdJournalId,
+              } as Record<string, unknown>,
+            },
+            { new: true },
+          );
+
+          // Delete the summary after it's been added to the journal
+          await this.pullRequestSummaryModel.deleteOne({
+            _id: prSummary._id,
+          });
+        } catch (journalError) {
+          console.error(
+            `Error creating journal entry:`,
+            journalError.message || journalError,
+          );
+        }
+      }
+      return {};
+    } catch (error) {
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      console.error('Error creating pull request summary:', error);
+      throw new HttpException(
+        'Failed to create pull request summary',
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }

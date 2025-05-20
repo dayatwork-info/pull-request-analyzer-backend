@@ -22,6 +22,9 @@ describe('GitHubController', () => {
       getPullRequestDetails: jest.fn(),
       getPullRequestContributors: jest.fn(),
       getRepositoryContributors: jest.fn(),
+      hasUserPullRequestSummaries: jest.fn(),
+      addPullRequestSummaries: jest.fn(),
+      fetchAndSummarizePullRequests: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -258,6 +261,51 @@ describe('GitHubController', () => {
         }),
       );
       expect(result).toEqual(mockContributors);
+    });
+  });
+
+  describe('hasUserPullRequestSummaries', () => {
+    it('should call service method with token', async () => {
+      const mockResponse = {
+        found: true,
+        summaries: 5,
+      };
+      (
+        mockGitHubService.hasUserPullRequestSummaries as jest.Mock
+      ).mockResolvedValueOnce(mockResponse);
+
+      const result =
+        await controller.hasUserPullRequestSummaries(mockGithubToken);
+
+      expect(
+        mockGitHubService.hasUserPullRequestSummaries,
+      ).toHaveBeenCalledWith(mockGithubToken);
+      expect(result).toEqual(mockResponse);
+    });
+  });
+
+  describe('addPullRequestSummaries', () => {
+    it('should call service method with token and request dto', async () => {
+      const requestDto = {
+        email: 'encrypted-email',
+        password: 'encrypted-password',
+      };
+      const mockResponse = {};
+
+      (
+        mockGitHubService.addPullRequestSummaries as jest.Mock
+      ).mockResolvedValueOnce(mockResponse);
+
+      const result = await controller.addPullRequestSummaries(
+        mockGithubToken,
+        requestDto,
+      );
+
+      expect(mockGitHubService.addPullRequestSummaries).toHaveBeenCalledWith(
+        mockGithubToken,
+        requestDto,
+      );
+      expect(result).toEqual(mockResponse);
     });
   });
 });
