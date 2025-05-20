@@ -24,13 +24,4 @@ module.exports = {
     '@typescript-eslint/no-base-to-string': 'off',
     '@typescript-eslint/restrict-template-expressions': 'off',
   },
-  overrides: [
-    {
-      files: ['*.spec.ts'],
-      rules: {
-        '@typescript-eslint/no-unsafe-assignment': 'off',
-        // Add other rules you want disabled
-      },
-    },
-  ],
 };
